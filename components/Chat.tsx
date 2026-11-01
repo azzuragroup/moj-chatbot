@@ -25,7 +25,7 @@ export default function Chat() {
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>Mój chatbot</h1>
+        <h1 style={{ margin: 0 }}>Asystent Azzura</h1>
         <button
           type="button"
           onClick={async () => {
@@ -36,6 +36,8 @@ export default function Chat() {
           Wyjdź
         </button>
       </div>
+
+      <p style={{ margin: 0 }}>Dzień dobry! W czym mogę pomóc?</p>
 
       <div
         style={{

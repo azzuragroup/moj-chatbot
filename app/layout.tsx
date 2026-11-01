@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const metadata = { title: "Mój chatbot" };
+export const metadata = { title: "Asystent Azzura" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
