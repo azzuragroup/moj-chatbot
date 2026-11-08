@@ -26,7 +26,10 @@ export default function Chat() {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>Asystent Azzura</h1>
-        <a href="/porownanie" style={{ marginLeft: "auto", marginRight: 12 }}>
+        <a href="/analiza" style={{ marginLeft: "auto", marginRight: 12 }}>
+          Analiza
+        </a>
+        <a href="/porownanie" style={{ marginRight: 12 }}>
           Porównanie
         </a>
         <button
