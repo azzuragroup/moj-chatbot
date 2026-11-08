@@ -8,6 +8,7 @@ import {
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { INSTRUCTIONS } from "@/lib/prompt";
 
 export const maxDuration = 60;
 
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: openrouter.chat(modelId),
+    instructions: INSTRUCTIONS,
     messages: await convertToModelMessages(messages),
   });
 
