@@ -16,7 +16,11 @@ import {
   validateAnalysis,
   type ValidationResult,
 } from "@/lib/analysis";
-import { buildAnalysisPrompt, parseAnalyzeRequest } from "@/lib/input";
+import {
+  buildAnalysisPrompt,
+  enforceReviewOnCommands,
+  parseAnalyzeRequest,
+} from "@/lib/input";
 
 export const maxDuration = 60;
 
@@ -74,7 +78,12 @@ export async function POST(req: Request) {
       return reply(classifyModelFailure(result.finishReason, result.text));
     }
     // Druga, niezależna walidacja: nic nie jest uzupełniane ani poprawiane.
-    return reply(validateAnalysis(result.output));
+    const validated = validateAnalysis(result.output);
+    if (!validated.ok) return reply(validated);
+    return reply({
+      ok: true,
+      analysis: enforceReviewOnCommands(validated.analysis, request.message),
+    });
   } catch (error) {
     if (NoObjectGeneratedError.isInstance(error)) {
       return reply(classifyModelFailure(error.finishReason, error.text));
