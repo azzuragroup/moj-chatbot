@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import type { UIMessage } from "ai";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -70,9 +71,11 @@ export default function Chat() {
               maxWidth: "85%",
             }}
           >
+            <ToolBadges message={m} />
             {m.parts.map((p, i) =>
               p.type === "text" ? <span key={i}>{p.text}</span> : null,
             )}
+            <Sources message={m} />
           </div>
         ))}
         {status === "submitted" && (
@@ -111,5 +114,70 @@ export default function Chat() {
         </button>
       </form>
     </main>
+  );
+}
+
+function Sources({ message }: { message: UIMessage }) {
+  const seen = new Set<string>();
+  const sources = message.parts.filter(
+    (p): p is Extract<UIMessage["parts"][number], { type: "source-url" }> =>
+      p.type === "source-url" &&
+      /^https?:\/\//i.test(p.url) &&
+      !seen.has(p.url) &&
+      !!seen.add(p.url),
+  );
+  if (sources.length === 0) return null;
+
+  const fetchedAt = (message.metadata as { fetchedAt?: string } | undefined)?.fetchedAt;
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #ccc", whiteSpace: "normal" }}>
+      <strong>Źródła</strong>
+      <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+        {sources.map((s) => (
+          <li key={s.url}>
+            <a href={s.url} target="_blank" rel="noopener noreferrer">
+              {s.title || s.url}
+            </a>
+          </li>
+        ))}
+      </ul>
+      {fetchedAt && (
+        <div style={{ color: "#666", fontSize: 13 }}>
+          pobrano: {new Date(fetchedAt).toLocaleString("pl-PL")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  web_search: "🔎 wyszukiwanie",
+  aktualnyCzas: "🕒 aktualnyCzas",
+};
+
+/** Etykiety narzędzi użytych w odpowiedzi. Bez narzędzi nic nie pokazuje. */
+function ToolBadges({ message }: { message: UIMessage }) {
+  if (message.role !== "assistant") return null;
+  const used = new Set<string>();
+  for (const p of message.parts) {
+    if (p.type.startsWith("tool-")) used.add(p.type.slice(5));
+    else if (p.type === "dynamic-tool" && "toolName" in p) used.add(String(p.toolName));
+    // Wyszukiwanie OpenRouter działa po stronie serwera i zostawia po sobie źródła.
+    else if (p.type === "source-url") used.add("web_search");
+  }
+  if (used.size === 0) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6, whiteSpace: "normal" }}>
+      {[...used].map((name) => (
+        <span
+          key={name}
+          style={{ fontSize: 12, background: "#e2e2e2", color: "#333", borderRadius: 999, padding: "2px 8px" }}
+        >
+          {TOOL_LABELS[name] ?? `🛠 ${name}`}
+        </span>
+      ))}
+    </div>
   );
 }
