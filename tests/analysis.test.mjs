@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { zodSchema } from "ai";
 import {
   analysisSchema,
+  enforceReviewRules,
   classifyModelFailure,
   classifyProviderError,
   validateAnalysis,
@@ -12,7 +13,7 @@ import {
 } from "../lib/analysis.ts";
 
 const valid = {
-  category: "sales",
+  category: "zapytanie_ofertowe",
   priority: "normal",
   draft: "Dziękuję za wiadomość.",
   needs_review: true,
@@ -29,7 +30,7 @@ test("schemat wysyłany do modelu zgadza się ze schematem z materiałów", asyn
   assert.deepEqual(schema, {
     type: "object",
     properties: {
-      category: { type: "string", enum: ["sales", "support", "billing", "unknown"] },
+      category: { type: "string", enum: ["zapytanie_ofertowe", "produkt", "reklamacja_dostawa", "inne"] },
       priority: { type: "string", enum: ["normal", "high"] },
       draft: { type: "string" },
       needs_review: { type: "boolean" },
@@ -82,7 +83,7 @@ test("odmowa modelu (tekst zamiast JSON) nie daje wyniku", () => {
 });
 
 test("przerwana odpowiedź nie daje wyniku, nawet z poprawnym początkiem", () => {
-  rejected(classifyModelFailure("length", '{"category":"sales","priority"'), "interrupted");
+  rejected(classifyModelFailure("length", '{"category":"produkt","priority"'), "interrupted");
   rejected(classifyModelFailure("other", ""), "interrupted");
 });
 
@@ -97,4 +98,12 @@ test("błąd dostawcy i brak obsługi structured output", () => {
     classifyProviderError(404, "No endpoints found that can handle the requested parameters."),
     "config",
   );
+});
+
+test("zapytanie ofertowe i reklamacja zawsze wymagają sprawdzenia", () => {
+  const base = { priority: "normal", draft: "Dziękujemy.", needs_review: false };
+  assert.equal(enforceReviewRules({ ...base, category: "zapytanie_ofertowe" }).needs_review, true);
+  assert.equal(enforceReviewRules({ ...base, category: "reklamacja_dostawa" }).needs_review, true);
+  assert.equal(enforceReviewRules({ ...base, category: "produkt" }).needs_review, false);
+  assert.equal(enforceReviewRules({ ...base, category: "inne" }).needs_review, false);
 });

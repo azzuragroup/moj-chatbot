@@ -6,10 +6,10 @@ import type { Analysis, FailureKind } from "@/lib/analysis";
 type Failure = { kind: FailureKind; message: string; issues: string[] };
 
 const CATEGORY_LABELS: Record<Analysis["category"], string> = {
-  sales: "Sprzedaż (oferta i cena)",
-  support: "Wsparcie (problem techniczny)",
-  billing: "Rozliczenia (płatność lub zwrot)",
-  unknown: "Nierozpoznana sprawa",
+  zapytanie_ofertowe: "Zapytanie ofertowe (cena, wycena, oferta)",
+  produkt: "Informacja o produkcie",
+  reklamacja_dostawa: "Reklamacja / dostawa",
+  inne: "Inne",
 };
 
 const FAILURE_LABELS: Record<FailureKind, string> = {
@@ -34,10 +34,10 @@ export default function Analyze() {
     setAnalysis(null);
     setFailure(null);
     try {
-      const res = await fetch("/api/analyze", {
+      const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ mode: "analyze", message }),
       });
       const isJson = res.headers.get("content-type")?.includes("application/json");
       if (!isJson) {

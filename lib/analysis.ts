@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CATEGORIES = ["sales", "support", "billing", "unknown"] as const;
+export const CATEGORIES = ["zapytanie_ofertowe", "produkt", "reklamacja_dostawa", "inne"] as const;
 export const PRIORITIES = ["normal", "high"] as const;
 
 /** Schemat wyniku analizy. Ten sam obiekt idzie do modelu i do walidacji. */
@@ -170,4 +170,14 @@ export function classifyProviderError(
       "Błąd dostawcy modelu. Spróbuj ponownie za chwilę.",
     issues: [],
   };
+}
+
+/**
+ * Zapytanie ofertowe (wycenę robi dział handlowy) oraz reklamacja lub dostawa
+ * zawsze wymagają sprawdzenia przez pracownika, niezależnie od odpowiedzi modelu.
+ */
+export function enforceReviewRules(analysis: Analysis): Analysis {
+  return analysis.category === "zapytanie_ofertowe" || analysis.category === "reklamacja_dostawa"
+    ? { ...analysis, needs_review: true }
+    : analysis;
 }

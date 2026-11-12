@@ -1,0 +1,96 @@
+/* Kolory i styl jak na azzuragroup.com. */
+:root {
+  --azzura-blue: #027dc7;
+  --azzura-blue-dark: #026aa8;
+  --azzura-navy: #082d49;
+  --azzura-dark: #1a1a1a;
+  --azzura-light: #f4f4f5;
+  --azzura-ice: #e0f1fe;
+  --azzura-ice-text: #0c466e;
+  --azzura-border: #71717a;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: var(--azzura-dark);
+  font-family: var(--font-inter), "Inter", sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-manrope), "Manrope", sans-serif;
+  color: var(--azzura-navy);
+}
+
+a {
+  color: var(--azzura-blue-dark);
+}
+
+button {
+  background: var(--azzura-blue);
+  color: #ffffff;
+  border: 1px solid var(--azzura-blue);
+  border-radius: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--azzura-blue-dark);
+  border-color: var(--azzura-blue-dark);
+}
+
+button:disabled {
+  background: #c9ced4;
+  border-color: #c9ced4;
+  color: #4b5563;
+  cursor: default;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: var(--azzura-dark);
+  background: #ffffff;
+  border: 1px solid var(--azzura-border);
+  border-radius: 0;
+}
+
+input:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--azzura-blue);
+  outline-offset: 1px;
+}
+
+.brand-bar {
+  background: var(--azzura-dark);
+  color: var(--azzura-light);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  font-family: var(--font-manrope), "Manrope", sans-serif;
+  font-weight: 700;
+}
+
+.brand-bar img {
+  height: 36px;
+  width: auto;
+}
+
+/* Przycisk drugorzędny: obramowanie w kolorze granatu. */
+.button-secondary {
+  background: #ffffff;
+  color: var(--azzura-navy);
+  border: 1px solid var(--azzura-navy);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: var(--azzura-ice);
+  color: var(--azzura-navy);
+  border-color: var(--azzura-navy);
+}
