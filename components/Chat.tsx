@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { prepareImage, stripOldImages } from "./chatImages";
 import { collectSources, toolSequence } from "./toolSequence";
+import { splitLinks } from "./links";
+import InstagramPost, { type InstagramPostOutput } from "./InstagramPost";
 import { MAX_STEPS } from "@/lib/steps";
 
 const MAX_IMAGE_PROMPT = 500;
@@ -153,7 +155,7 @@ export default function Chat() {
           >
             <ToolBadges message={m} />
             {m.parts.map((p, i) => {
-              if (p.type === "text") return <span key={i}>{p.text}</span>;
+              if (p.type === "text") return <LinkedText key={i} text={p.text} />;
               if (p.type === "file" && p.mediaType.startsWith("image/") && m.role === "user") {
                 return (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -164,6 +166,17 @@ export default function Chat() {
                     style={{ display: "block", maxWidth: 160, maxHeight: 160, borderRadius: 6, marginTop: 6 }}
                   />
                 );
+              }
+              if (p.type === "tool-postInstagram") {
+                if (p.state === "input-streaming" || p.state === "input-available") {
+                  return <div key={i} style={{ color: "#666" }}>Przygotowuję post na Instagram…</div>;
+                }
+                if (p.state === "output-error") {
+                  return <div key={i} style={{ color: "#b00020" }}>Błąd: nie udało się przygotować posta.</div>;
+                }
+                if (p.state === "output-available") {
+                  return <InstagramPost key={i} output={p.output as InstagramPostOutput} />;
+                }
               }
               if (p.type === "tool-generujObraz") {
                 if (p.state === "input-streaming" || p.state === "input-available") {
@@ -366,6 +379,8 @@ const TOOL_LABELS: Record<string, string> = {
   aktualnyCzas: "🕒 aktualnyCzas",
   pogoda: "🌤️ pogoda",
   generujObraz: "🎨 obraz",
+  katalogProduktow: "📦 katalog",
+  postInstagram: "📸 Instagram",
 };
 
 /** Etykiety narzędzi użytych w odpowiedzi. Bez narzędzi nic nie pokazuje. */
@@ -397,5 +412,22 @@ function StepLimitNotice({ message }: { message: UIMessage }) {
     <div style={{ color: "#8a5300", fontSize: 14, marginTop: 6, whiteSpace: "normal" }}>
       Przerwałem po {MAX_STEPS} krokach. Zadaj pytanie prościej albo podziel je na części.
     </div>
+  );
+}
+
+/** Tekst odpowiedzi z klikalnymi linkami http(s), także w formacie [opis](link). */
+function LinkedText({ text }: { text: string }) {
+  return (
+    <span>
+      {splitLinks(text).map((part, i) =>
+        part.href ? (
+          <a key={i} href={part.href} target="_blank" rel="noopener noreferrer">
+            {part.text}
+          </a>
+        ) : (
+          <span key={i}>{part.text}</span>
+        ),
+      )}
+    </span>
   );
 }

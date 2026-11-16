@@ -26,6 +26,8 @@ import { describeModelError } from "./images";
 import { createImageTool } from "./imageGen";
 import { aktualnyCzas } from "./tools";
 import { pogoda } from "./weather";
+import { katalogProduktow } from "./catalog";
+import { createInstagramTool } from "./instagramTool";
 import { MAX_STEPS, hitStepLimit } from "./steps";
 
 type Config = { apiKey: string; modelId: string };
@@ -38,6 +40,8 @@ export async function runChat(messages: UIMessage[], { apiKey, modelId }: Config
     web_search: openrouter.tools.webSearch({ maxResults: 3, engine: "native" }),
     aktualnyCzas,
     pogoda,
+    katalogProduktow,
+    postInstagram: createInstagramTool(apiKey),
     generujObraz: createImageTool(apiKey),
   };
 

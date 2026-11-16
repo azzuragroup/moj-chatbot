@@ -66,21 +66,22 @@ export function stripOldImages(messages: UIMessage[]): UIMessage[] {
 }
 
 /**
- * Obrazy z narzędzia generujObraz nie wracają na serwer: model i tak widzi
+ * Obrazy z narzędzi generujObraz i postInstagram nie wracają na serwer: model i tak widzi
  * tylko tekst „obraz wygenerowany”, więc usuwamy dane pliku z wyniku narzędzia.
  */
 function stripGeneratedImageData(m: UIMessage): UIMessage {
-  if (!m.parts.some((p) => p.type === "tool-generujObraz")) return m;
+  if (!m.parts.some((p) => p.type === "tool-generujObraz" || p.type === "tool-postInstagram")) return m;
   return {
     ...m,
-    parts: m.parts.map((p) =>
-      p.type === "tool-generujObraz" &&
-      p.state === "output-available" &&
-      p.output &&
-      typeof p.output === "object" &&
-      "url" in p.output
-        ? { ...p, output: { ...(p.output as object), url: "" } }
-        : p,
-    ) as UIMessage["parts"],
+    parts: m.parts.map((p) => {
+      if (p.type === "tool-generujObraz" && p.state === "output-available" && p.output && typeof p.output === "object" && "url" in p.output) {
+        return { ...p, output: { ...(p.output as object), url: "" } };
+      }
+      if (p.type === "tool-postInstagram" && p.state === "output-available" && p.output && typeof p.output === "object" && "grafika" in p.output) {
+        const out = p.output as { grafika?: object };
+        return { ...p, output: { ...out, grafika: { ...out.grafika, url: "" } } };
+      }
+      return p;
+    }) as UIMessage["parts"],
   };
 }

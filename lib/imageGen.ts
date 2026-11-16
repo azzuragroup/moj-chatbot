@@ -35,7 +35,11 @@ async function modelFromStats(apiKey: string, id: string) {
 }
 
 /** Generuje obraz w stylu marki. Nigdy nie rzuca błędu. */
-export async function generateBrandedImage(prompt: string, apiKey: string): Promise<ImageResult> {
+export async function generateBrandedImage(
+  prompt: string,
+  apiKey: string,
+  aspectRatio: `${number}:${number}` = BRAND_ASPECT_RATIO,
+): Promise<ImageResult> {
   // Biblioteka podaje dla obrazów tylko nazwę, o którą prosiliśmy. Faktyczny
   // model bierzemy z odpowiedzi API: z pola "model" albo ze statystyk wywołania.
   let apiModel: string | undefined;
@@ -67,7 +71,7 @@ export async function generateBrandedImage(prompt: string, apiKey: string): Prom
     const { image } = await generateImage({
       model: openrouter.imageModel(IMAGE_MODEL),
       prompt: buildBrandedPrompt(prompt),
-      aspectRatio: BRAND_ASPECT_RATIO,
+      aspectRatio,
     });
     if (!apiModel && generationId) apiModel = await modelFromStats(apiKey, generationId);
     return {
