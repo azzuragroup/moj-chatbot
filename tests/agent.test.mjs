@@ -53,3 +53,24 @@ test("opis narzędzia: do 500 znaków", () => {
   assert.equal(imageToolSpec.inputSchema.safeParse({ opis: "a".repeat(500) }).success, true);
   assert.equal(imageToolSpec.inputSchema.safeParse({ opis: "a".repeat(501) }).success, false);
 });
+
+test("odpowiedź przerwana Stopem (narzędzie bez wyniku) nie psuje kolejnego pytania", async () => {
+  const messages = [
+    { id: "u1", role: "user", parts: [{ type: "text", text: "Ile to 100 euro?" }] },
+    {
+      id: "a1",
+      role: "assistant",
+      parts: [
+        { type: "step-start" },
+        { type: "text", text: "Sprawdzam kurs…", state: "done" },
+        { type: "tool-waluty", toolCallId: "t1", state: "input-available", input: { waluta: "EUR", kwota: 100 } },
+      ],
+    },
+    { id: "u2", role: "user", parts: [{ type: "text", text: "A ile to 50 euro?" }] },
+  ];
+  const model = await convertToModelMessages(messages, { ignoreIncompleteToolCalls: true });
+  const text = JSON.stringify(model);
+  assert.doesNotMatch(text, /tool-call/, "niedokończone narzędzie pominięte");
+  assert.match(text, /Sprawdzam kurs/, "to, co agent zdążył napisać, zostaje");
+  assert.match(text, /A ile to 50 euro/);
+});

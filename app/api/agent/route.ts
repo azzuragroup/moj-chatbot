@@ -40,7 +40,9 @@ export async function POST(req: Request) {
     if (fileError) return new Response(fileError, { status: 400 });
     const config = getConfig();
     if (!config) return new Response(CONFIG_MESSAGE, { status: 500 });
-    return runChat(messages, config);
+    // req.signal: gdy użytkownik kliknie Stop, przeglądarka zrywa połączenie,
+    // a model i narzędzia przestają pracować (nie płacimy za resztę).
+    return runChat(messages, config, req.signal);
   }
 
   if (mode === "analyze") {

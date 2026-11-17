@@ -3,7 +3,9 @@ import { z } from "zod";
 
 const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 10_000;
+/** Open-Meteo podaje prognozę na najwyżej 16 dni (dziś + 15). */
+export const MAX_FORECAST_DAYS = 16;
 
 // Opisy kodów pogody WMO z dokumentacji Open-Meteo.
 const WMO: Record<number, string> = {
@@ -32,6 +34,8 @@ const geocodingSchema = z.object({
         longitude: z.number(),
         country: z.string().optional(),
         admin1: z.string().optional(),
+        country_code: z.string().optional(),
+        timezone: z.string().optional(),
       }),
     )
     .optional(),
@@ -88,13 +92,78 @@ async function getJson(url: string, fetchFn: Fetch) {
   return res.json();
 }
 
-/** Pobiera aktualną pogodę i prognozę na 3 dni. Nigdy nie rzuca błędu. */
+/** Dzisiejsza data w Polsce (RRRR-MM-DD). */
+function warsawDate(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Warsaw",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** Liczba dni od dziś do podanej daty (obie jako RRRR-MM-DD). */
+function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+export type Place = {
+  nazwa: string;
+  region?: string;
+  kraj?: string;
+  kodKraju?: string;
+  strefaCzasowa?: string;
+};
+
+/** Wyszukuje miejscowość (Open-Meteo): nazwa, kraj, kod kraju i strefa czasowa. Nigdy nie rzuca błędu. */
+export async function geocodeCity(
+  city: string,
+  fetchFn: Fetch = fetch,
+): Promise<{ ok: true; place: Place } | { ok: false; blad: string }> {
+  try {
+    const geoUrl = `${GEOCODING_URL}?${new URLSearchParams({ name: city, count: "1", language: "pl", format: "json" })}`;
+    const geo = geocodingSchema.safeParse(await getJson(geoUrl, fetchFn));
+    if (!geo.success) return { ok: false, blad: "Wyszukiwarka miejscowości zwróciła nieoczekiwane dane." };
+    const p = geo.data.results?.[0];
+    if (!p) return { ok: false, blad: `Nie znaleziono miejscowości „${city}”. Sprawdź pisownię.` };
+    return {
+      ok: true,
+      place: {
+        nazwa: p.name,
+        ...(p.admin1 ? { region: p.admin1 } : {}),
+        ...(p.country ? { kraj: p.country } : {}),
+        ...(p.country_code ? { kodKraju: p.country_code.toUpperCase() } : {}),
+        ...(p.timezone ? { strefaCzasowa: p.timezone } : {}),
+      },
+    };
+  } catch {
+    return { ok: false, blad: "Źródło nie odpowiada (Open-Meteo). Nie udało się znaleźć miejscowości." };
+  }
+}
+
+/**
+ * Pobiera aktualną pogodę i prognozę: na 3 dni albo na jeden wskazany dzień
+ * (RRRR-MM-DD, od dziś do 15 dni naprzód). Nigdy nie rzuca błędu.
+ */
 export async function getWeather(
   city: string,
   fetchFn: Fetch = fetch,
   now: () => Date = () => new Date(),
+  day?: string,
 ): Promise<WeatherResult> {
   const stamp = () => now().toISOString();
+  if (day !== undefined) {
+    const offset = daysBetween(warsawDate(now()), day);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(offset)) {
+      return { blad: `Niepoprawna data „${day}”. Podaj datę w formacie RRRR-MM-DD.`, pobrano: stamp() };
+    }
+    if (offset < 0 || offset >= MAX_FORECAST_DAYS) {
+      return {
+        blad: `Prognoza jest dostępna od dziś do ${MAX_FORECAST_DAYS - 1} dni naprzód. Dzień ${day} jest poza tym zakresem.`,
+        pobrano: stamp(),
+      };
+    }
+  }
   try {
     const geoUrl = `${GEOCODING_URL}?${new URLSearchParams({ name: city, count: "1", language: "pl", format: "json" })}`;
     const geo = geocodingSchema.safeParse(await getJson(geoUrl, fetchFn));
@@ -112,7 +181,7 @@ export async function getWeather(
       current: "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
       daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
       timezone: "Europe/Warsaw",
-      forecast_days: "3",
+      ...(day ? { start_date: day, end_date: day } : { forecast_days: "3" }),
     })}`;
     const forecast = forecastSchema.safeParse(await getJson(forecastUrl, fetchFn));
     if (!forecast.success) {
@@ -144,7 +213,7 @@ export async function getWeather(
     };
   } catch {
     return {
-      blad: "Serwis pogody nie odpowiada. Spróbuj ponownie za chwilę.",
+      blad: "Źródło nie odpowiada (Open-Meteo). Nie udało się sprawdzić pogody.",
       pobrano: stamp(),
     };
   }
@@ -152,16 +221,23 @@ export async function getWeather(
 
 export const pogoda = tool({
   description:
-    "Pobiera aktualną pogodę i prognozę na 3 dni (dziś, jutro, pojutrze) dla podanej miejscowości " +
-    "z publicznego serwisu Open-Meteo: temperaturę, temperaturę odczuwalną, opady, wiatr i opis pogody. " +
-    "Użyj, gdy pytanie dotyczy pogody, temperatury, deszczu, śniegu lub wiatru. " +
-    "Jeśli wynik zawiera pole „blad”, przekaż ten komunikat użytkownikowi i nie zgaduj pogody.",
+    "Pobiera pogodę dla podanej miejscowości z publicznego serwisu Open-Meteo: aktualne warunki " +
+    "oraz prognozę na 3 dni albo na jeden wskazany dzień (do 15 dni naprzód): temperaturę, " +
+    "opady, wiatr i opis pogody. Użyj, gdy pytanie dotyczy pogody, temperatury, deszczu, śniegu " +
+    "lub wiatru. Gdy użytkownik podaje dzień słowami („w piątek”, „za tydzień”), najpierw ustal " +
+    "datę narzędziem czas. Jeśli wynik zawiera pole „blad”, przekaż ten komunikat i nie zgaduj pogody.",
   inputSchema: z.object({
     miasto: z
       .string()
+      .trim()
       .min(1)
       .max(100)
       .describe("Nazwa miejscowości, np. „Warszawa” albo „Kraków”."),
+    dzien: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Data w formacie RRRR-MM-DD")
+      .optional()
+      .describe("Dzień prognozy w formacie RRRR-MM-DD. Pomiń, aby dostać prognozę na 3 dni."),
   }),
-  execute: async ({ miasto }) => getWeather(miasto),
+  execute: async ({ miasto, dzien }) => getWeather(miasto, fetch, () => new Date(), dzien),
 });

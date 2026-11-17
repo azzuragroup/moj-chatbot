@@ -47,13 +47,13 @@ export default function InstagramPost({ output }: { output: InstagramPostOutput 
   const [info, setInfo] = useState("");
 
   if (!output.ok) {
-    return <div style={{ color: "#b00020", whiteSpace: "normal" }}>Błąd: {output.message}</div>;
+    return <div style={{ color: "var(--danger)", whiteSpace: "normal" }}>Błąd: {output.message}</div>;
   }
   const { grafika } = output;
 
   return (
     <div style={{ marginTop: 6, whiteSpace: "normal" }}>
-      <div style={{ fontSize: 12, color: "#555", marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
         Szkic posta na Instagram – niczego nie publikujemy automatycznie.
       </div>
       {grafika.ok && grafika.url ? (
@@ -64,23 +64,23 @@ export default function InstagramPost({ output }: { output: InstagramPostOutput 
           style={{ display: "block", width: "100%", maxWidth: 320, aspectRatio: "4 / 5", objectFit: "cover" }}
         />
       ) : grafika.ok ? (
-        <div style={{ color: "#666" }}>[grafika z wcześniejszej części rozmowy]</div>
+        <div style={{ color: "var(--muted)" }}>[grafika z wcześniejszej części rozmowy]</div>
       ) : (
-        <div style={{ color: "#b00020" }}>Grafika: {grafika.message}</div>
+        <div style={{ color: "var(--danger)" }}>Grafika: {grafika.message}</div>
       )}
       <pre
         style={{
           whiteSpace: "pre-wrap",
           fontFamily: "inherit",
-          background: "#ffffff",
-          border: "1px solid #d4d4d8",
+          background: "var(--surface)",
+          border: "1px solid var(--line)",
           padding: 10,
           marginTop: 8,
         }}
       >
         {output.opis}
       </pre>
-      <div style={{ fontSize: 12, color: "#666" }}>
+      <div style={{ fontSize: 12, color: "var(--muted)" }}>
         {output.opis.length} / 2200 znaków · {output.hashtagi.length} hashtagów
         {grafika.ok && ` · grafika ${output.szerokosc}×${output.wysokosc} · model: ${grafika.modelId || "nie podany w odpowiedzi API"}`}
       </div>

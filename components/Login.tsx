@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import AppHeader from "./AppHeader";
 
 export default function Login() {
   const router = useRouter();
@@ -34,26 +35,30 @@ export default function Login() {
   }
 
   return (
-    <main style={{ maxWidth: 360, margin: "0 auto", padding: 24 }}>
-      <h1>Wpisz hasło</h1>
-      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Hasło"
-          autoFocus
-          style={{ padding: 10, fontSize: 16 }}
-        />
-        <button type="submit" disabled={!password || busy} style={{ padding: 10, fontSize: 16 }}>
-          Wejdź
-        </button>
-        {error && (
-          <div role="alert" style={{ color: "#b00020" }}>
-            {error}
-          </div>
-        )}
-      </form>
+    <main className="login-page">
+      <AppHeader signedIn={false} />
+      <div className="card login-card">
+        <h1>Wpisz hasło</h1>
+        <p>Asystent marketingowy Azzura Group</p>
+        <form onSubmit={submit}>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Hasło"
+            aria-label="Hasło"
+            autoFocus
+          />
+          <button type="submit" disabled={!password || busy}>
+            Wejdź
+          </button>
+          {error && (
+            <div role="alert" className="error">
+              {error}
+            </div>
+          )}
+        </form>
+      </div>
     </main>
   );
 }

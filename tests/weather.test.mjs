@@ -69,14 +69,14 @@ test("nieznane miasto daje czytelny komunikat", async () => {
 test("API nie odpowiada (błąd sieci lub limit czasu) daje komunikat, nie wyjątek", async () => {
   const { fn } = fakeFetch([new TypeError("fetch failed")]);
   const r = await getWeather("Warszawa", fn, NOW);
-  assert.equal(r.blad, "Serwis pogody nie odpowiada. Spróbuj ponownie za chwilę.");
+  assert.equal(r.blad, "Źródło nie odpowiada (Open-Meteo). Nie udało się sprawdzić pogody.");
   assert.equal(r.pobrano, "2026-11-10T18:45:00.000Z");
 });
 
 test("błąd HTTP z API daje komunikat", async () => {
   const { fn } = fakeFetch([json(GEO), json({ error: true, reason: "Bad request" }, 400)]);
   const r = await getWeather("Warszawa", fn, NOW);
-  assert.equal(r.blad, "Serwis pogody nie odpowiada. Spróbuj ponownie za chwilę.");
+  assert.equal(r.blad, "Źródło nie odpowiada (Open-Meteo). Nie udało się sprawdzić pogody.");
 });
 
 test("nieoczekiwany kształt odpowiedzi daje komunikat", async () => {
@@ -89,4 +89,28 @@ test("opis nieznanego kodu pogody i opis narzędzia", () => {
   assert.equal(describeWeatherCode(0), "bezchmurnie");
   assert.equal(describeWeatherCode(42), "kod pogody 42");
   assert.match(pogoda.description, /pogod/);
+});
+
+test("prognoza na wskazany dzień pyta API o ten jeden dzień", async () => {
+  const day = { ...FORECAST, daily: { time: ["2026-11-14"], weather_code: [3], temperature_2m_max: [5], temperature_2m_min: [1], precipitation_probability_max: [20] } };
+  const { fn, calls } = fakeFetch([json(GEO), json(day)]);
+  const r = await getWeather("Warszawa", fn, NOW, "2026-11-14");
+  assert.equal(r.prognoza.length, 1);
+  assert.equal(r.prognoza[0].data, "2026-11-14");
+  assert.match(calls[1], /start_date=2026-11-14&end_date=2026-11-14/);
+  assert.doesNotMatch(calls[1], /forecast_days/);
+});
+
+test("dzień poza zakresem prognozy: komunikat bez pytania API", async () => {
+  const { fn, calls } = fakeFetch([]);
+  const past = await getWeather("Warszawa", fn, NOW, "2026-11-01");
+  assert.match(past.blad, /poza tym zakresem/);
+  const far = await getWeather("Warszawa", fn, NOW, "2026-12-30");
+  assert.match(far.blad, /poza tym zakresem/);
+  assert.equal(calls.length, 0);
+});
+
+test("schemat pogody sprawdza format daty", () => {
+  assert.equal(pogoda.inputSchema.safeParse({ miasto: "Rzeszów", dzien: "jutro" }).success, false);
+  assert.equal(pogoda.inputSchema.safeParse({ miasto: "Rzeszów", dzien: "2026-11-12" }).success, true);
 });

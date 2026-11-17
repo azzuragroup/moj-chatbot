@@ -7,15 +7,17 @@ const manrope = Manrope({ subsets: ["latin", "latin-ext"], variable: "--font-man
 
 export const metadata = { title: "Asystent marketingowy Azzura Group" };
 
+// Ustawia zapamiętany motyw, zanim strona się narysuje (bez mignięcia).
+// Bez zapisanego wyboru motyw wynika z ustawienia systemu (CSS).
+const THEME_SCRIPT = `try{var t=localStorage.getItem("motyw");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pl" className={`${inter.variable} ${manrope.variable}`}>
+    <html lang="pl" className={`${inter.variable} ${manrope.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
-        <header className="brand-bar">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-azzura.svg" alt="Azzura Group" />
-          <span>Azzura Group</span>
-        </header>
         {children}
       </body>
     </html>

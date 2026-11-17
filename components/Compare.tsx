@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AppHeader from "./AppHeader";
 import { TASKS, VARIANTS, type VariantId } from "@/lib/compare";
 
 type Answer =
@@ -37,18 +38,16 @@ export default function Compare() {
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <p>
-        <a href="/">← Wróć do czatu</a>
-      </p>
-      <h1>Porównanie: bez i z rozumowaniem krok po kroku</h1>
-      <p style={{ color: "#555" }}>
+    <main className="page page-wide">
+      <AppHeader />
+      <h2 style={{ margin: "0 0 4px" }}>Porównanie: bez i z rozumowaniem krok po kroku</h2>
+      <p style={{ color: "var(--muted)" }}>
         Każde kliknięcie to 2 płatne wywołania modelu. Ocena sprawdza tylko,
         czy liczba w linii „Wynik:” jest poprawna. Długość odpowiedzi jest
         podana informacyjnie i nie wpływa na ocenę.
       </p>
       {error && (
-        <div role="alert" style={{ color: "#b00020" }}>
+        <div role="alert" style={{ color: "var(--danger)" }}>
           Błąd: {error}
         </div>
       )}
@@ -56,7 +55,7 @@ export default function Compare() {
       {TASKS.map((task) => (
         <section
           key={task.id}
-          style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, marginTop: 16 }}
+          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 16, marginTop: 16 }}
         >
           <p style={{ marginTop: 0 }}>
             <strong>Zadanie:</strong> {task.question}
@@ -74,18 +73,18 @@ export default function Compare() {
                 return (
                   <div
                     key={v}
-                    style={{ flex: "1 1 300px", background: "#f5f5f5", borderRadius: 8, padding: 12, color: "#111" }}
+                    style={{ flex: "1 1 300px", background: "var(--azzura-light)", borderRadius: 8, padding: 12, color: "var(--text)" }}
                   >
                     <strong>{LABELS[v]}</strong>
                     {"error" in a ? (
-                      <p style={{ color: "#b00020" }}>{a.error}</p>
+                      <p style={{ color: "var(--danger)" }}>{a.error}</p>
                     ) : (
                       <>
                         <p style={{ fontSize: 18 }}>
                           {a.correct ? "✅ Poprawny wynik" : "❌ Błędny wynik"}
                           {" — "}model podał: {a.result ?? "brak linii „Wynik:”"}
                         </p>
-                        <p style={{ color: "#666", fontSize: 13 }}>
+                        <p style={{ color: "var(--muted)", fontSize: 13 }}>
                           Długość: {a.text.length} znaków (bez wpływu na ocenę)
                         </p>
                         <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{a.text}</pre>
