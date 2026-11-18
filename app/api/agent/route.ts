@@ -4,6 +4,7 @@ import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
 import { hasOnlyChatRoles, parseAnalyzeRequest } from "@/lib/input";
 import { validateChatFiles } from "@/lib/images";
 import { runAnalyze, runChat } from "@/lib/agent";
+import { parseConversationId } from "@/lib/chatPersistence";
 
 export const maxDuration = 60;
 
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     if (!config) return new Response(CONFIG_MESSAGE, { status: 500 });
     // req.signal: gdy użytkownik kliknie Stop, przeglądarka zrywa połączenie,
     // a model i narzędzia przestają pracować (nie płacimy za resztę).
-    return runChat(messages, config, req.signal);
+    return runChat(messages, config, req.signal, parseConversationId(rest.conversationId));
   }
 
   if (mode === "analyze") {

@@ -8,6 +8,7 @@ import { collectSources, stepSequence } from "./toolSequence";
 import { splitLinks } from "./links";
 import InstagramPost, { type InstagramPostOutput } from "./InstagramPost";
 import AppHeader from "./AppHeader";
+import MarkdownText from "./MarkdownText";
 import { MAX_STEPS } from "@/lib/steps";
 import { MAX_TOOL_CALLS, TASK_TIMEOUT_MS } from "@/lib/guard";
 
@@ -40,7 +41,35 @@ type ImageToolOutput =
     }
   | { ok: false; message: string };
 
-export default function Chat() {
+type ChatProps = {
+  /** Numer zapisanej rozmowy wczytanej z bazy (null = nowa rozmowa). */
+  initialConversationId?: number | null;
+  /** Wiadomości zapisanej rozmowy – pokazywane po odświeżeniu strony. */
+  initialMessages?: UIMessage[];
+  /** Czy zapis rozmów w bazie jest skonfigurowany na serwerze. */
+  persistence?: boolean;
+  /** Komunikat z serwera, np. że rozmowy z adresu już nie ma. */
+  notice?: string;
+  /** Imię z profilu – do powitania w nowej rozmowie. */
+  userName?: string | null;
+};
+
+/** Adres w przeglądarce pokazuje bieżącą rozmowę – F5 wraca do tej samej. */
+function showConversationInUrl(id: number | null) {
+  try {
+    window.history.replaceState(null, "", id === null ? "/?nowa=1" : `/?c=${id}`);
+  } catch {
+    // bez zmiany adresu czat działa dalej
+  }
+}
+
+export default function Chat({
+  initialConversationId = null,
+  initialMessages = [],
+  persistence = false,
+  notice = "",
+  userName = null,
+}: ChatProps) {
   const [input, setInput] = useState("");
   const [image, setImage] = useState<FileUIPart | null>(null);
   const [imageError, setImageError] = useState("");
@@ -48,6 +77,8 @@ export default function Chat() {
   // Blokada natychmiastowa: stan Reacta zmienia się dopiero po odświeżeniu,
   // więc szybkie podwójne kliknięcie mogłoby wysłać dwa zlecenia.
   const generatingRef = useRef(false);
+  // Numer rozmowy w bazie. Ref, bo transport czyta go w chwili wysyłania.
+  const conversationIdRef = useRef<number | null>(initialConversationId);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const transport = useMemo(
@@ -55,12 +86,40 @@ export default function Chat() {
       new DefaultChatTransport({
         api: "/api/agent",
         prepareSendMessagesRequest: ({ id, messages, body }) => ({
-          body: { ...body, mode: "chat", id, messages: stripOldImages(messages) },
+          body: {
+            ...body,
+            mode: "chat",
+            id,
+            // Do której rozmowy w bazie dopisać wiadomość (null = utwórz nową).
+            conversationId: conversationIdRef.current,
+            messages: stripOldImages(messages),
+          },
         }),
       }),
     [],
   );
-  const { messages, sendMessage, status, error, stop } = useChat({ transport });
+  const { messages, sendMessage, setMessages, status, error, stop } = useChat({
+    messages: initialMessages,
+    transport,
+    // Serwer podaje numer rozmowy w metadanych odpowiedzi – kolejne pytania dopisują się do niej.
+    onFinish: ({ message }) => {
+      const id = (message.metadata as { conversationId?: number | null } | undefined)?.conversationId;
+      if (typeof id === "number" && id !== conversationIdRef.current) {
+        conversationIdRef.current = id;
+        showConversationInUrl(id);
+      }
+    },
+  });
+
+  // „Nowa rozmowa”: pusty czat; stara rozmowa zostaje w bazie.
+  function newConversation() {
+    if (status === "submitted" || status === "streaming") stop();
+    conversationIdRef.current = null;
+    showConversationInUrl(null);
+    setMessages([]);
+    setStoppedIds(new Set());
+    setInput("");
+  }
 
   // Wiadomości przerwane przyciskiem Stop (ich część zostaje w rozmowie).
   const [stoppedIds, setStoppedIds] = useState<Set<string>>(() => new Set());
@@ -126,7 +185,19 @@ export default function Chat() {
       <section className="chat-messages chat-panel" aria-live="polite" ref={panelRef}>
         {messages.length === 0 && (
           <div className="chat-empty">
-            Dzień dobry! Pomogę napisać post, opis produktu, mail albo odpowiedź na zapytanie ofertowe.
+            {notice && <p className="warning" style={{ marginTop: 0 }}>{notice}</p>}
+            {userName ? (
+              <>
+                Dzień dobry, {userName}! 🔵 W czym dziś pomogę – post, opis produktu, mail czy odpowiedź na
+                zapytanie ofertowe?
+              </>
+            ) : (
+              <>
+                Dzień dobry! Pomogę napisać post, opis produktu, mail albo odpowiedź na zapytanie ofertowe.
+                <br />
+                Jak mam się do Ciebie zwracać? Napisz np. „Mam na imię Ola” – zapamiętam to.
+              </>
+            )}
           </div>
         )}
         {messages.map((m, index) => (
@@ -136,7 +207,14 @@ export default function Chat() {
             <ToolBadges message={m} />
             <StepLimitNotice message={m} />
             {m.parts.map((p, i) => {
-              if (p.type === "text") return <LinkedText key={i} text={p.text} />;
+              if (p.type === "text") {
+                // Odpowiedzi agenta z formatowaniem markdown; tekst użytkownika bez zmian.
+                return m.role === "assistant" ? (
+                  <MarkdownText key={i} text={p.text} />
+                ) : (
+                  <LinkedText key={i} text={p.text} />
+                );
+              }
               if (p.type === "file" && p.mediaType.startsWith("image/") && m.role === "user") {
                 return (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -228,9 +306,19 @@ export default function Chat() {
           </div>
         )}
 
-        <label className="composer-label" htmlFor="wiadomosc">
-          Wiadomość
-        </label>
+        <div className="composer-top">
+          <label className="composer-label" htmlFor="wiadomosc">
+            Wiadomość
+          </label>
+          <button
+            type="button"
+            className="button-secondary inline-btn"
+            onClick={newConversation}
+            disabled={messages.length === 0}
+          >
+            + Nowa rozmowa
+          </button>
+        </div>
         <form
           className="composer-row"
           onSubmit={(e) => {
@@ -294,6 +382,9 @@ export default function Chat() {
         </div>
 
         <p className="composer-hint">
+          {persistence
+            ? "Rozmowy zapisują się automatycznie. "
+            : "Zapis rozmów wyłączony (brak konfiguracji bazy). "}
           Zdjęcie: JPG, PNG lub WebP, do 4 MB · Opis obrazu: maks. {MAX_IMAGE_PROMPT} znaków ·
           Asystent przygotowuje szkice – sprawdź je przed wysłaniem.
         </p>
@@ -389,6 +480,7 @@ const TOOL_LABELS: Record<string, string> = {
   kalkulator: "🧮 kalkulator",
   notatki: "📝 notatki",
   sprawdzFirme: "🔍 sprawdzFirme",
+  zapiszProfil: "🧠 pamięć",
   diagnostyka: "🩺 diagnostyka",
   generujObraz: "🎨 obraz",
   katalogProduktow: "📦 katalog",

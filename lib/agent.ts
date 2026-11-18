@@ -12,7 +12,7 @@ import {
   type UIMessage,
 } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { ANALYSIS_INSTRUCTIONS, INSTRUCTIONS, PLANNER_INSTRUCTIONS, TRAVEL_SUMMARY_INSTRUCTIONS } from "./prompt";
+import { ANALYSIS_INSTRUCTIONS, INSTRUCTIONS, PLANNER_INSTRUCTIONS, TITLE_INSTRUCTIONS, TRAVEL_SUMMARY_INSTRUCTIONS } from "./prompt";
 import { z } from "zod";
 import { getHolidays } from "./holidays";
 import { findProduct, productFacts } from "./planner";
@@ -41,6 +41,11 @@ import { katalogProduktow } from "./catalog";
 import { createInstagramTool } from "./instagramTool";
 import { MAX_STEPS, hitStepLimit, isLastStep } from "./steps";
 import { completeSentences, endsWithSentence } from "./travelHelpers";
+import { cleanTitle, messageToText } from "./chatPersistence";
+import { loadProfile, zapiszProfil } from "./profile";
+import { missingFieldsInstruction, profileForPrompt } from "./profileCore";
+import { isSupabaseConfigured } from "./supabase";
+import { conversationExists, createConversation, deleteIfEmpty, saveExchange, updateConversationTitle } from "./chatStore";
 import {
   SLOW_TOOLS,
   TASK_TIMEOUT_MS,
@@ -58,7 +63,23 @@ export async function runChat(
   messages: UIMessage[],
   { apiKey, modelId }: Config,
   abortSignal?: AbortSignal,
+  requestedConversationId: number | null = null,
 ) {
+  // Zapis rozmowy: pierwsza wiadomość tworzy rozmowę w bazie, kolejne dopisują się
+  // do istniejącej. Bez konfiguracji Supabase czat działa dalej, tylko bez zapisu.
+  const lastUser = messages[messages.length - 1];
+  const userText = lastUser?.role === "user" ? messageToText(lastUser) : "";
+  let conversationId: number | null = null;
+  let createdNow = false;
+  if (userText) {
+    if (requestedConversationId && (await conversationExists(requestedConversationId))) {
+      conversationId = requestedConversationId;
+    } else {
+      conversationId = await createConversation(userText);
+      createdNow = conversationId !== null;
+    }
+  }
+
   const openrouter = createOpenRouter({ apiKey });
   const baseTools = {
     // Wyszukiwanie wykonuje OpenRouter po swojej stronie (server tool).
@@ -71,6 +92,7 @@ export async function runChat(
     czas,
     notatki,
     sprawdzFirme,
+    zapiszProfil,
     katalogProduktow,
     postInstagram: createInstagramTool(apiKey),
     generujObraz: createImageTool(apiKey),
@@ -90,12 +112,21 @@ export async function runChat(
     guard,
   );
 
+  // Pamięć o użytkowniku: profil z bazy dołączany do instrukcji przed każdą odpowiedzią
+  // (jako dane w znaczniku <profil>, nie polecenia).
+  const profile = await loadProfile();
+  // O brakujące preferencje marketingowe dopytujemy tylko w pierwszej odpowiedzi rozmowy
+  // (i tylko gdy baza działa – bez niej nie ma gdzie zapisać).
+  const firstInConversation = messages.filter((m) => m.role === "user").length === 1;
+  const askMissing = isSupabaseConfigured() && firstInConversation ? missingFieldsInstruction(profile?.preferences ?? {}) : "";
+  const chatInstructions = [INSTRUCTIONS, profileForPrompt(profile), askMissing].filter(Boolean).join("\n\n");
+
   // Ustawiane w prepareStep, gdy agent musi kończyć: limit kroków, narzędzi albo czasu.
   let stopReason: StopReason | null = null;
 
   const result = streamText({
     model: openrouter.chat(modelId),
-    instructions: INSTRUCTIONS,
+    instructions: chatInstructions,
     // tools: wyniki narzędzi z historii też przechodzą przez toModelOutput,
     // więc model nigdy nie dostaje pliku obrazu, tylko krótki tekst.
     // ignoreIncompleteToolCalls: odpowiedź przerwana przyciskiem Stop może mieć
@@ -125,7 +156,7 @@ export async function runChat(
       stopReason ??= reason;
       return {
         toolChoice: "none",
-        instructions: `${INSTRUCTIONS}\n\n${summaryInstruction(reason, MAX_STEPS)}`,
+        instructions: `${chatInstructions}\n\n${summaryInstruction(reason, MAX_STEPS)}`,
       };
     },
     // Diagnostyka kroków: tylko nazwy i liczby, bez treści rozmowy.
@@ -154,7 +185,27 @@ export async function runChat(
       sendSources: true,
       // Na końcu: czas pobrania źródeł i model, który faktycznie odpowiedział
       // (pole "model" z odpowiedzi API, przekazane przez SDK w finish-step).
+      // originalMessages: w onEnd dostajemy całą rozmowę z gotową odpowiedzią.
+      originalMessages: messages,
+      // Zapis raz, po zakończeniu odpowiedzi (nie każdy kawałek streamingu osobno).
+      onEnd: async ({ messages: all, isAborted }) => {
+        if (!conversationId) return;
+        const response = all[all.length - 1];
+        const answerText = response?.role === "assistant" ? messageToText(response, { aborted: isAborted }) : "";
+        if (answerText || isAborted) {
+          const saved = await saveExchange(conversationId, userText, answerText);
+          // Tytuł od modelu tylko raz: po pierwszej pełnej odpowiedzi w nowej rozmowie.
+          if (saved && createdNow && !isAborted && answerText) {
+            await nameConversation(conversationId, userText, answerText, { apiKey, modelId });
+          }
+        } else if (createdNow) {
+          // Błąd modelu przed odpowiedzią: nie zostawiamy pustej rozmowy.
+          await deleteIfEmpty(conversationId);
+        }
+      },
       messageMetadata: ({ part }) => {
+        // Numer rozmowy od razu na starcie – czat dopisze kolejne wiadomości do niej.
+        if (part.type === "start") return { conversationId };
         if (part.type === "finish-step") {
           steps += 1;
           usedModel = part.response.modelId;
@@ -389,5 +440,45 @@ export async function runWeekDrafts(posts: { data: string; slug: string }[], { a
         ? "Model nie zdążył w 55 sekund. Spróbuj ponownie."
         : "Nie udało się przygotować szkiców. Spróbuj ponownie.";
     return Response.json({ ok: false, message }, { status: 502 });
+  }
+}
+
+/**
+ * Tytuł rozmowy od modelu (3–5 słów). Limit tokenów obejmuje też „myślenie” modelu,
+ * więc dajemy zapas i ponawiamy raz, gdy tekst wyjdzie pusty.
+ * Przy błędzie zostaje tytuł z pierwszej wiadomości.
+ */
+async function nameConversation(id: number, userText: string, answerText: string, { apiKey, modelId }: Config) {
+  const model = createOpenRouter({ apiKey }).chat(modelId);
+  const prompt = `<rozmowa>\nUżytkownik: ${userText.slice(0, 1500)}\nAsystent: ${answerText.slice(0, 1500)}\n</rozmowa>`;
+  for (const maxOutputTokens of [1500, 3000]) {
+    try {
+      const result = await generateText({
+        model,
+        instructions: TITLE_INSTRUCTIONS,
+        prompt,
+        maxOutputTokens,
+        reasoning: "low",
+        timeout: { totalMs: 20_000 },
+      });
+      const title = cleanTitle(result.text);
+      // Diagnostyka: tylko liczby i tak/nie, bez treści.
+      console.info("[tytuł]", {
+        rozmowa: id,
+        koniec: result.finishReason,
+        limit: maxOutputTokens,
+        tokenyTekstu: result.usage.outputTokenDetails?.textTokens,
+        tokenyRozumowania: result.usage.outputTokenDetails?.reasoningTokens,
+        jestTytul: Boolean(title),
+      });
+      if (title) {
+        const saved = await updateConversationTitle(id, title);
+        console.info("[tytuł] zapisany w conversations.title:", saved ? "tak" : "nie");
+        return;
+      }
+    } catch (error) {
+      console.info("[tytuł] błąd modelu", (error as { name?: string } | null)?.name ?? "nieznany");
+      return;
+    }
   }
 }

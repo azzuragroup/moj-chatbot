@@ -5,6 +5,8 @@ import ThemeSelect from "./ThemeSelect";
 
 const TABS = [
   { href: "/", label: "Czat" },
+  { href: "/history", label: "Historia" },
+  { href: "/profile", label: "Profil" },
   { href: "/analiza", label: "Analiza wiadomości" },
   { href: "/porownanie", label: "Porównanie" },
   { href: "/dashboard", label: "Asystent podróży" },

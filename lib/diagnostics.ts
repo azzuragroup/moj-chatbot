@@ -7,6 +7,8 @@ export const REQUIRED_ENV = [
   "OPENROUTER_MODEL",
   "CHAT_PASSWORD",
   "SESSION_SECRET",
+  "SUPABASE_URL",
+  "SUPABASE_SECRET_KEY",
 ] as const;
 
 /**

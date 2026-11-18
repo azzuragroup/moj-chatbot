@@ -143,7 +143,10 @@ test("notatki: zapis, odczyt, pusta notatka i limit", () => {
 // --- diagnostyka ---
 test("diagnostyka: tylko tak/nie, nigdy wartości zmiennych", () => {
   const env = { OPENROUTER_API_KEY: "sk-or-TAJNE", OPENROUTER_MODEL: "x/y", CHAT_PASSWORD: "", SESSION_SECRET: undefined };
-  assert.deepEqual(envStatus(env), { OPENROUTER_API_KEY: "tak", OPENROUTER_MODEL: "tak", CHAT_PASSWORD: "nie", SESSION_SECRET: "nie" });
+  assert.deepEqual(envStatus(env), {
+    OPENROUTER_API_KEY: "tak", OPENROUTER_MODEL: "tak", CHAT_PASSWORD: "nie", SESSION_SECRET: "nie",
+    SUPABASE_URL: "nie", SUPABASE_SECRET_KEY: "nie",
+  });
   const r = diagnosticsReport({ modelId: "x/y", toolNames: ["czas", "diagnostyka"], maxSteps: 5 }, env, new Date("2026-11-16T10:00:00Z"));
   assert.doesNotMatch(JSON.stringify(r), /TAJNE/);
   assert.equal(r.limitKrokow, 5);
