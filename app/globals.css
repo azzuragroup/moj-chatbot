@@ -342,6 +342,60 @@ a.badge:hover {
   margin-bottom: 6px;
 }
 
+/* Źródła z bazy wiedzy pod odpowiedzią */
+.kb-sources {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  white-space: normal;
+}
+
+.kb-sources-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.kb-sources ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-source-name {
+  font-weight: 700;
+  color: var(--heading);
+  overflow-wrap: anywhere;
+}
+
+.kb-source-score {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.kb-source-text {
+  margin: 6px 0 2px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--secondary-border);
+  background: var(--surface);
+  border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
 /* „Agent pisze…” */
 .typing {
   align-self: flex-start;
@@ -1345,6 +1399,82 @@ a.badge:hover {
   }
 }
 
+/* ===== Baza wiedzy (/upload) ===== */
+.upload-form input,
+.upload-form textarea {
+  width: 100%;
+}
+
+.upload-form textarea {
+  min-height: 320px;
+  resize: vertical;
+}
+
+.upload-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--heading);
+}
+
+.upload-count {
+  margin: -4px 0 0;
+  text-align: right;
+}
+
+.upload-steps {
+  list-style: none;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--assistant-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.upload-steps .done {
+  color: var(--muted);
+}
+
+.upload-steps .current {
+  font-weight: 700;
+  color: var(--heading);
+}
+
+.upload-steps .pending {
+  color: var(--muted);
+}
+
+.upload-docs {
+  margin-top: 20px;
+}
+
+.upload-docs h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.composer-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Link wyglądający jak przycisk drugorzędny. */
+.composer-links a {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm, 8px);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.composer-links a:focus-visible {
+  outline: 2px solid var(--azzura-blue);
+  outline-offset: 1px;
+}
+
 /* Formatowanie odpowiedzi agenta (markdown). */
 .bubble-assistant .md {
   white-space: normal;
@@ -1402,4 +1532,30 @@ a.badge:hover {
 .md hr {
   border: 0;
   border-top: 1px solid var(--line);
+}
+
+/* Wybór sposobu dzielenia tekstu (/upload) */
+.upload-mode {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upload-mode legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.upload-mode label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.upload-form .upload-mode input {
+  width: auto;
 }

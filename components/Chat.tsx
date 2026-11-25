@@ -5,6 +5,7 @@ import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { prepareImage, stripOldImages } from "./chatImages";
 import { collectSources, stepSequence } from "./toolSequence";
+import { knowledgeSources, percent } from "./knowledgeSources";
 import { splitLinks } from "./links";
 import InstagramPost, { type InstagramPostOutput } from "./InstagramPost";
 import AppHeader from "./AppHeader";
@@ -251,6 +252,7 @@ export default function Chat({
               return null;
             })}
             <Sources message={m} />
+            <KnowledgeSourceList message={m} />
             <ModelLine message={m} previous={messages[index - 1]} />
             <StatsLine message={m} />
             {m.role === "assistant" && stoppedIds.has(m.id) && (
@@ -310,14 +312,19 @@ export default function Chat({
           <label className="composer-label" htmlFor="wiadomosc">
             Wiadomość
           </label>
-          <button
-            type="button"
-            className="button-secondary inline-btn"
-            onClick={newConversation}
-            disabled={messages.length === 0}
-          >
-            + Nowa rozmowa
-          </button>
+          <div className="composer-links">
+            <a className="button-secondary inline-btn" href="/upload">
+              Baza wiedzy
+            </a>
+            <button
+              type="button"
+              className="button-secondary inline-btn"
+              onClick={newConversation}
+              disabled={messages.length === 0}
+            >
+              + Nowa rozmowa
+            </button>
+          </div>
         </div>
         <form
           className="composer-row"
@@ -481,11 +488,59 @@ const TOOL_LABELS: Record<string, string> = {
   notatki: "📝 notatki",
   sprawdzFirme: "🔍 sprawdzFirme",
   zapiszProfil: "🧠 pamięć",
+  searchKnowledge: "📚 baza wiedzy",
   diagnostyka: "🩺 diagnostyka",
   generujObraz: "🎨 obraz",
   katalogProduktow: "📦 katalog",
   postInstagram: "📸 Instagram",
 };
+
+/** Źródła z bazy wiedzy: tytuł, podobieństwo i rozwijany dokładny tekst fragmentu. */
+function KnowledgeSourceList({ message }: { message: UIMessage }) {
+  const [open, setOpen] = useState<Set<number>>(() => new Set());
+  if (message.role !== "assistant") return null;
+  const sources = knowledgeSources(message.parts);
+  if (sources.length === 0) return null;
+  const toggle = (i: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+
+  return (
+    <div className="kb-sources">
+      <div className="kb-sources-title">📚 Źródła z bazy wiedzy</div>
+      <ul>
+        {sources.map((s, i) => (
+          <li key={i}>
+            <div className="kb-source-row">
+              <span className="kb-source-name">{s.title}</span>
+              <span className="kb-source-score" title="Podobieństwo fragmentu do pytania">
+                {percent(s.similarity)}
+              </span>
+              <button
+                type="button"
+                className="button-secondary inline-btn"
+                aria-expanded={open.has(i)}
+                aria-controls={`${message.id}-kb-${i}`}
+                onClick={() => toggle(i)}
+              >
+                {open.has(i) ? "Ukryj fragment" : "Pokaż fragment"}
+              </button>
+            </div>
+            {open.has(i) && (
+              <blockquote id={`${message.id}-kb-${i}`} className="kb-source-text">
+                {s.content}
+              </blockquote>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /** Etykiety narzędzi użytych w odpowiedzi. Bez narzędzi nic nie pokazuje. */
 function ToolBadges({ message }: { message: UIMessage }) {

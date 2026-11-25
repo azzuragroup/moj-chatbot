@@ -43,6 +43,7 @@ import { MAX_STEPS, hitStepLimit, isLastStep } from "./steps";
 import { completeSentences, endsWithSentence } from "./travelHelpers";
 import { cleanTitle, messageToText } from "./chatPersistence";
 import { loadProfile, zapiszProfil } from "./profile";
+import { searchKnowledge } from "./knowledge";
 import { missingFieldsInstruction, profileForPrompt } from "./profileCore";
 import { isSupabaseConfigured } from "./supabase";
 import { conversationExists, createConversation, deleteIfEmpty, saveExchange, updateConversationTitle } from "./chatStore";
@@ -93,6 +94,7 @@ export async function runChat(
     notatki,
     sprawdzFirme,
     zapiszProfil,
+    searchKnowledge,
     katalogProduktow,
     postInstagram: createInstagramTool(apiKey),
     generujObraz: createImageTool(apiKey),
