@@ -53,8 +53,11 @@ type ChatProps = {
   notice?: string;
   /** Imię do powitania „Cześć, <imię>!” (z profilu albo część e-maila przed @). */
   userName?: string | null;
-  /** Gdy w profilu nie ma imienia – zachęta, żeby je podać. */
-  askForName?: boolean;
+  /**
+   * Pierwsze wejście (pusty profil): rozmowa zaczyna się od powitania z pytaniami.
+   * „Nowa rozmowa” przeładowuje wtedy stronę – serwer sprawdza, czy profil nadal jest pusty.
+   */
+  onboarding?: boolean;
 };
 
 /** Adres w przeglądarce pokazuje bieżącą rozmowę – F5 wraca do tej samej. */
@@ -72,7 +75,7 @@ export default function Chat({
   persistence = false,
   notice = "",
   userName = null,
-  askForName = false,
+  onboarding = false,
 }: ChatProps) {
   const [input, setInput] = useState("");
   const [image, setImage] = useState<FileUIPart | null>(null);
@@ -118,6 +121,11 @@ export default function Chat({
   // „Nowa rozmowa”: pusty czat; stara rozmowa zostaje w bazie.
   function newConversation() {
     if (status === "submitted" || status === "streaming") stop();
+    if (onboarding) {
+      // Po odpowiedziach na powitanie profil już nie jest pusty – nie pokazujemy pytań drugi raz.
+      window.location.assign("/?nowa=1");
+      return;
+    }
     conversationIdRef.current = null;
     showConversationInUrl(null);
     setMessages([]);
@@ -192,12 +200,6 @@ export default function Chat({
             {notice && <p className="warning" style={{ marginTop: 0 }}>{notice}</p>}
             {userName ? <>Cześć, {userName}! 🔵 </> : <>Cześć! </>}
             W czym dziś pomogę – post, opis produktu, mail czy odpowiedź na zapytanie ofertowe?
-            {askForName && (
-              <>
-                <br />
-                Jak mam się do Ciebie zwracać? Napisz np. „Mam na imię Ola” – zapamiętam to.
-              </>
-            )}
           </div>
         )}
         {messages.map((m, index) => (

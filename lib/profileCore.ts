@@ -10,7 +10,7 @@ export const MAX_NAME = 60;
 
 export type Preferences = Record<string, string>;
 
-/** Preferencje marketingowe Azzura Group: o nie agent dopytuje, gdy ich brakuje. */
+/** Preferencje marketingowe Azzura Group (osobne pola na stronie /profile). */
 export const MARKETING_FIELDS = [
   { key: "kanały", label: "Kanały", example: "LinkedIn, Instagram" },
   { key: "ton_komunikacji", label: "Ton komunikacji", example: "rzeczowy, z umiarem w emotkach" },
@@ -34,6 +34,10 @@ const ALIASES: Record<string, string> = {
   ulubione_marki: "główne_marki",
   marki_w_centrum_uwagi: "główne_marki",
   promowane_marki: "główne_marki",
+  stanowisko: "rola",
+  rola_w_firmie: "rola",
+  funkcja: "rola",
+  dział: "rola",
 };
 export type Fact = { nazwa: string; wartosc: string };
 
@@ -116,23 +120,74 @@ export function mergePreferences(current: unknown, incoming: Preferences): Prefe
   return Object.fromEntries(keys.slice(Math.max(0, keys.length - MAX_FACTS)).map((k) => [k, merged[k]]));
 }
 
-/** Których preferencji marketingowych brakuje w profilu. */
-export function missingMarketingFields(preferences: Preferences) {
-  return MARKETING_FIELDS.filter((f) => !preferences[f.key]?.trim());
+/* ===== Pierwsze wejście: powitanie z dwoma pytaniami przy pustym profilu ===== */
+
+/** Pusty profil = brak wiersza albo ani imienia, ani żadnej preferencji. */
+export function isProfileEmpty(profile: { name: string | null; preferences: Preferences } | null | undefined) {
+  if (!profile) return true;
+  return !profile.name?.trim() && Object.values(profile.preferences ?? {}).every((v) => !String(v).trim());
 }
 
 /**
- * Prośba o dopytanie – tylko w pierwszej odpowiedzi rozmowy, żeby agent
- * nie pytał przy każdej wiadomości.
+ * Nowa osoba = w profilu nie ma jeszcze żadnej preferencji (rola, kanały, ton…).
+ * Samo imię (np. przepisane z konta Google przy logowaniu) nie wystarcza – pytamy wtedy
+ * tylko o rolę oraz kanały i ton. Po odpowiedziach preferencje są zapisane i pytań już nie ma.
  */
-export function missingFieldsInstruction(preferences: Preferences) {
-  const missing = missingMarketingFields(preferences);
-  if (missing.length === 0) return "";
-  const list = missing.map((f) => `${f.label.toLowerCase()} (np. ${f.example})`).join("; ");
-  return `Brakuje w profilu: ${list}.
-Najpierw normalnie wykonaj prośbę użytkownika. Na końcu tej odpowiedzi zadaj jedno krótkie
-pytanie o brakujące informacje. Gdy użytkownik odpowie, zapisz je narzędziem zapiszProfil.
-Nie pytaj o to ponownie w tej rozmowie.`;
+export function needsOnboarding(profile: { name: string | null; preferences: Preferences } | null | undefined) {
+  return !profile || Object.values(profile.preferences ?? {}).every((v) => !String(v).trim());
+}
+
+/** Stały identyfikator wiadomości powitalnej w czacie (żeby serwer ją rozpoznał). */
+export const WELCOME_MESSAGE_ID = "powitanie";
+
+export const WELCOME_QUESTIONS = [
+  "Jak masz na imię i jaką pełnisz rolę w firmie?",
+  "Na jakich kanałach najczęściej publikujesz (LinkedIn, Instagram, mail) i jakim tonem?",
+] as const;
+
+/** Pierwsze pytanie, gdy imię już znamy (np. z konta Google). */
+export const WELCOME_ROLE_QUESTION = "Jaką pełnisz rolę w firmie?";
+
+/**
+ * Powitanie nowej osoby: kim jest agent (jedno zdanie) i dwa pytania do profilu.
+ * knowsName: imię jest już w profilu – witamy po imieniu i pytamy tylko o rolę.
+ */
+export function welcomeText(name: string | null | undefined, knowsName = false) {
+  const hello = name?.trim() ? `Cześć, ${name.trim()}! 🔵` : "Cześć! 🔵";
+  const first = knowsName ? WELCOME_ROLE_QUESTION : WELCOME_QUESTIONS[0];
+  return `${hello} Pomagam pisać posty, opisy produktów, maile i odpowiedzi na zapytania ofertowe dotyczące produktów Azzura Group – płyty BoardeX, Azzura ThermoFloor, deski Dragonwood i panele ADO.
+
+Żeby lepiej dopasować teksty do Ciebie, odpowiedz na dwa pytania:
+1. ${first}
+2. ${WELCOME_QUESTIONS[1]}`;
+}
+
+type TextMessage = { role?: unknown; parts?: unknown };
+
+/** Czy w rozmowie jest powitanie z pytaniami (także po wczytaniu z bazy). Znacznik: stałe drugie pytanie. */
+export function hasWelcome(messages: TextMessage[]) {
+  return messages.some(
+    (m) =>
+      m.role === "assistant" &&
+      Array.isArray(m.parts) &&
+      m.parts.some((p) => (p as { type?: unknown; text?: unknown })?.type === "text" && String((p as { text?: unknown }).text ?? "").includes(WELCOME_QUESTIONS[1])),
+  );
+}
+
+/**
+ * Instrukcja dla agenta przy pierwszym wejściu: zapisać odpowiedzi w profilu tej osoby.
+ * Dołączana tylko, gdy w profilu nie ma preferencji i w rozmowie jest powitanie – po zapisie
+ * preferencje są w profilu, więc przy kolejnych wejściach agent już nie pyta.
+ */
+export function onboardingInstruction() {
+  return `Pierwsze wejście: w profilu tej osoby nie ma jeszcze preferencji. Na początku rozmowy
+przywitałeś ją i zadałeś dwa pytania: 1) rola w firmie (oraz imię, jeśli go nie znałeś),
+2) kanały, na których najczęściej publikuje, i ton komunikacji.
+- Gdy użytkownik odpowie, choćby częściowo, od razu zapisz odpowiedzi narzędziem zapiszProfil:
+  imie, rola, kanaly, ton – tylko to, co faktycznie napisał, bez zgadywania.
+- Potem jednym zdaniem potwierdź, co zapamiętałeś, i zapytaj, w czym możesz pomóc.
+- Nie powtarzaj tych pytań. Jeśli zamiast odpowiedzi użytkownik od razu o coś prosi,
+  wykonaj prośbę i nie naciskaj na odpowiedzi.`;
 }
 
 /** Profil jako blok danych do instrukcji agenta (dane, nie polecenia). */

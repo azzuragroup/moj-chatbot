@@ -44,7 +44,7 @@ import { completeSentences, endsWithSentence } from "./travelHelpers";
 import { cleanTitle, messageToText } from "./chatPersistence";
 import { createZapiszProfilTool, loadProfile } from "./profile";
 import { createSearchKnowledgeTool } from "./knowledge";
-import { missingFieldsInstruction, profileForPrompt } from "./profileCore";
+import { WELCOME_MESSAGE_ID, greetingName, hasWelcome, needsOnboarding, onboardingInstruction, profileForPrompt, welcomeText } from "./profileCore";
 import type { UserDb } from "./supabase/server";
 import { conversationExists, createConversation, deleteIfEmpty, saveExchange, updateConversationTitle } from "./chatStore";
 import {
@@ -70,6 +70,8 @@ export async function runChat(
   { apiKey, modelId }: Config,
   abortSignal?: AbortSignal,
   requestedConversationId: number | null = null,
+  /** E-mail zalogowanej osoby (z sesji) – do tekstu powitania zapisywanego w historii. */
+  userEmail: string | null = null,
 ) {
   // Zapis rozmowy: pierwsza wiadomość tworzy rozmowę w bazie, kolejne dopisują się
   // do istniejącej – tylko własnej. Cudzej (albo usuniętej) RLS „nie widzi”: odpowiadamy 404,
@@ -127,11 +129,13 @@ export async function runChat(
   // Pamięć o użytkowniku: profil z bazy dołączany do instrukcji przed każdą odpowiedzią
   // (jako dane w znaczniku <profil>, nie polecenia).
   const profile = await loadProfile(db);
-  // O brakujące preferencje marketingowe dopytujemy tylko w pierwszej odpowiedzi rozmowy
-  // (i tylko gdy baza działa – bez niej nie ma gdzie zapisać).
-  const firstInConversation = messages.filter((m) => m.role === "user").length === 1;
-  const askMissing = db && firstInConversation ? missingFieldsInstruction(profile?.preferences ?? {}) : "";
-  const chatInstructions = [INSTRUCTIONS, profileForPrompt(profile), askMissing].filter(Boolean).join("\n\n");
+  // Pierwsze wejście: tylko przy pustym profilu i gdy rozmowa zaczyna się od powitania z pytaniami.
+  // Po zapisaniu odpowiedzi profil nie jest pusty – instrukcja znika i agent już nie pyta.
+  const onboarding = db && needsOnboarding(profile) && hasWelcome(messages) ? onboardingInstruction() : "";
+  // Powitanie do zapisu w historii składa serwer – tak samo jak na stronie czatu (nie bierzemy tekstu od przeglądarki).
+  const welcomeToSave =
+    messages[0]?.id === WELCOME_MESSAGE_ID ? welcomeText(greetingName(profile?.name, userEmail), Boolean(profile?.name)) : "";
+  const chatInstructions = [INSTRUCTIONS, profileForPrompt(profile), onboarding].filter(Boolean).join("\n\n");
 
   // Ustawiane w prepareStep, gdy agent musi kończyć: limit kroków, narzędzi albo czasu.
   let stopReason: StopReason | null = null;
@@ -205,7 +209,9 @@ export async function runChat(
         const response = all[all.length - 1];
         const answerText = response?.role === "assistant" ? messageToText(response, { aborted: isAborted }) : "";
         if (answerText || isAborted) {
-          const saved = await saveExchange(db, conversationId, userText, answerText);
+          // Powitanie zapisujemy raz – w nowej rozmowie, która się od niego zaczęła.
+          const welcome = createdNow ? welcomeToSave : "";
+          const saved = await saveExchange(db, conversationId, userText, answerText, welcome);
           // Tytuł od modelu tylko raz: po pierwszej pełnej odpowiedzi w nowej rozmowie.
           if (saved && createdNow && !isAborted && answerText) {
             await nameConversation(db, conversationId, userText, answerText, { apiKey, modelId });

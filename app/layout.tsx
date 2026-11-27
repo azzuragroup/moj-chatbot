@@ -15,7 +15,7 @@ export const metadata = { title: "Asystent marketingowy Azzura Group" };
 const THEME_SCRIPT = `try{var t=localStorage.getItem("motyw");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  // Kto jest zalogowany – ustala serwer (zweryfikowana sesja). E-mail trafia tylko do nagłówka.
+  // Kto jest zalogowany – ustala serwer (zweryfikowana sesja). E-mail, imię i avatar trafiają tylko do nagłówka.
   const user = await getCurrentUser();
   return (
     <html lang="pl" className={`${inter.variable} ${manrope.variable}`} suppressHydrationWarning>
@@ -24,7 +24,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <SessionGuard />
-        <CurrentUserProvider email={user?.email ?? null}>{children}</CurrentUserProvider>
+        <CurrentUserProvider
+          user={user?.email ? { email: user.email, name: user.name, avatarUrl: user.avatarUrl } : null}
+        >
+          {children}
+        </CurrentUserProvider>
       </body>
     </html>
   );

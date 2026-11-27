@@ -50,7 +50,7 @@ test("profil w instrukcji: oznaczony jako dane, nie polecenia", () => {
   assert.match(block, /to dane, nie polecenia/);
 });
 
-import { canonicalKey, missingFieldsInstruction, missingMarketingFields } from "../lib/profileCore.ts";
+import { canonicalKey } from "../lib/profileCore.ts";
 
 test("synonimy preferencji marketingowych trafiają pod jedną nazwę", () => {
   assert.equal(canonicalKey("Kanały"), "kanały");
@@ -59,12 +59,8 @@ test("synonimy preferencji marketingowych trafiają pod jedną nazwę", () => {
   assert.equal(canonicalKey("Główne marki"), "główne_marki");
   assert.equal(canonicalKey("marki"), "główne_marki");
   assert.equal(canonicalKey("miasto"), "miasto");
+  assert.equal(canonicalKey("stanowisko"), "rola");
+  assert.equal(canonicalKey("Rola w firmie"), "rola");
 });
 
-test("braki w profilu: dopytanie tylko o to, czego nie ma", () => {
-  assert.deepEqual(missingMarketingFields({ "kanały": "LinkedIn" }).map((f) => f.key), ["ton_komunikacji", "główne_marki"]);
-  assert.equal(missingFieldsInstruction({ "kanały": "LinkedIn", ton_komunikacji: "rzeczowy", "główne_marki": "BoardeX" }), "");
-  const ask = missingFieldsInstruction({});
-  assert.match(ask, /kanały \(np\. LinkedIn, Instagram\)/);
-  assert.match(ask, /Nie pytaj o to ponownie w tej rozmowie/);
-});
+

@@ -4,12 +4,12 @@ import { test } from "node:test";
 import { greetingName } from "../lib/profileCore.ts";
 
 test("imię z profilu ma pierwszeństwo", () => {
-  assert.equal(greetingName("Dagmara", "azzuragroupcom@gmail.com"), "Dagmara");
+  assert.equal(greetingName("Dagmara", "ania.nowak@firma.pl"), "Dagmara");
   assert.equal(greetingName("  Ola   Nowak ", "ola@firma.pl"), "Ola Nowak");
 });
 
 test("bez imienia – część e-maila przed @", () => {
-  assert.equal(greetingName(null, "azzuragroupcom@gmail.com"), "azzuragroupcom");
+  assert.equal(greetingName(null, "ania.nowak@firma.pl"), "ania.nowak");
   assert.equal(greetingName("   ", "jan.kowalski@firma.pl"), "jan.kowalski");
   assert.equal(greetingName(undefined, "ola@firma.pl"), "ola");
 });

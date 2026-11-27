@@ -3,11 +3,12 @@ import "server-only";
 import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { displayFromMetadata } from "@/lib/userDisplay";
 
 /**
  * Supabase Auth po stronie serwera (Server Components, Route Handlers).
  * Wzorzec z dokumentacji Supabase „Server-Side Auth for Next.js” (@supabase/ssr).
- * Dane z tabel nadal czyta tylko lib/supabase.ts – ten plik służy wyłącznie do sesji.
+ * Sesja zalogowanej osoby i klient do jej danych (getUserDb) – bazy pilnuje RLS.
  */
 
 export function authEnv() {
@@ -49,7 +50,11 @@ export async function createClient() {
 export const getUserDb = createClient;
 export type UserDb = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
-export type CurrentUser = { id: string; email: string | null };
+/**
+ * name i avatarUrl: z danych konta u dostawcy (np. Google) zapisanych w zweryfikowanym tokenie
+ * (claims.user_metadata) – tylko do wyświetlenia w nagłówku, nigdy do decyzji o dostępie.
+ */
+export type CurrentUser = { id: string; email: string | null; name: string | null; avatarUrl: string | null };
 
 /**
  * Zalogowana osoba albo null. Tożsamość ustala wyłącznie serwer:
@@ -63,5 +68,9 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const { data, error } = await supabase.auth.getClaims();
   const claims = data?.claims;
   if (error || !claims?.sub || claims.is_anonymous) return null;
-  return { id: claims.sub, email: typeof claims.email === "string" ? claims.email : null };
+  return {
+    id: claims.sub,
+    email: typeof claims.email === "string" ? claims.email : null,
+    ...displayFromMetadata(claims.user_metadata),
+  };
 });

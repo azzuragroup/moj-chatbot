@@ -46,6 +46,19 @@ async function writeProfileRow(db: UserDb, current: Profile | null, row: { name?
   return again ? db.from("user_profiles").update(row).eq("id", again.id) : inserted;
 }
 
+/**
+ * Imię z konta u dostawcy (np. Google) → profil, ale tylko gdy w profilu nie ma jeszcze imienia
+ * (nie nadpisujemy imienia wpisanego przez użytkownika). Błąd nie blokuje logowania.
+ */
+export async function fillProfileNameFromAccount(db: UserDb | null, accountName: string | null | undefined) {
+  const name = sanitizeName(accountName ?? undefined);
+  if (!db || !name) return false;
+  const current = await loadProfile(db);
+  if (current?.name?.trim()) return false;
+  const result = await saveProfile(db, { name, preferences: {} });
+  return result.ok;
+}
+
 /** Dopisuje fakty do profilu zalogowanej osoby (albo tworzy go, gdy go jeszcze nie ma). */
 export async function saveProfile(db: UserDb | null, update: { name?: string; preferences: Preferences }) {
   if (!db) return { ok: false as const, blad: "Pamięć o użytkowniku jest wyłączona – brak konfiguracji bazy." };
@@ -67,7 +80,7 @@ export async function saveProfile(db: UserDb | null, update: { name?: string; pr
 export const createZapiszProfilTool = (db: UserDb | null) => tool({
   description:
     "Zapisuje w pamięci (profil w bazie) fakty, które użytkownik wprost mówi o sobie: imię oraz np. " +
-    "miasto, stanowisko, styl lub długość odpowiedzi, a przede wszystkim preferencje marketingowe: " +
+    "rola w firmie (stanowisko), miasto, styl lub długość odpowiedzi, a przede wszystkim preferencje marketingowe: " +
     "kanały (np. LinkedIn, Instagram), ton komunikacji i główne marki (np. BoardeX, Dragonwood). Użyj TYLKO, gdy użytkownik mówi o sobie wprost („mam na imię…”, " +
     "„pracuję w…”, „wolę krótkie odpowiedzi”). Nie zapisuj domysłów, planów („może kiedyś”), żartów, " +
     "informacji o innych osobach ani treści maili i wiadomości klientów. Nigdy nie zapisuj haseł, " +
@@ -75,6 +88,7 @@ export const createZapiszProfilTool = (db: UserDb | null) => tool({
     "Nowy fakt nie kasuje starych. Po zapisie krótko potwierdź, co zapamiętałeś.",
   inputSchema: z.object({
     imie: z.string().trim().min(1).max(MAX_NAME).optional().describe("Imię użytkownika, jeśli je podał."),
+    rola: z.string().trim().min(1).max(MAX_VALUE).optional().describe("Rola lub stanowisko w firmie, np. „specjalistka ds. marketingu”, „handlowiec”."),
     kanaly: z.string().trim().min(1).max(MAX_VALUE).optional().describe("Kanały, w których publikuje, np. „LinkedIn, Instagram”."),
     ton: z.string().trim().min(1).max(MAX_VALUE).optional().describe("Ton komunikacji, np. „rzeczowy, z umiarem w emotkach”."),
     marki: z.string().trim().min(1).max(MAX_VALUE).optional().describe("Główne marki, którymi się zajmuje, np. „BoardeX, Dragonwood”."),
@@ -89,10 +103,11 @@ export const createZapiszProfilTool = (db: UserDb | null) => tool({
       .default([])
       .describe("Pozostałe fakty o użytkowniku jako pary nazwa–wartość."),
   }),
-  execute: async ({ imie, kanaly, ton, marki, fakty }) => {
+  execute: async ({ imie, rola, kanaly, ton, marki, fakty }) => {
     const pobrano = new Date().toISOString();
     const name = sanitizeName(imie);
     const { accepted, rejected } = sanitizeFacts([
+      ...(rola ? [{ nazwa: "rola", wartosc: rola }] : []),
       ...(kanaly ? [{ nazwa: "kanały", wartosc: kanaly }] : []),
       ...(ton ? [{ nazwa: "ton_komunikacji", wartosc: ton }] : []),
       ...(marki ? [{ nazwa: "główne_marki", wartosc: marki }] : []),

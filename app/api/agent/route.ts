@@ -18,7 +18,8 @@ const CONFIG_MESSAGE =
 
 export async function POST(req: Request) {
   // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
-  if (!(await getCurrentUser())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
     // Rozmowa zapisuje się klientem zalogowanej osoby (jej sesja z ciasteczek) – user_id
     // ustala baza z tej sesji, nigdy z treści zapytania ani od modelu.
     const db = await getUserDb();
-    return runChat(db, messages, config, req.signal, parseConversationId(rest.conversationId));
+    return runChat(db, messages, config, req.signal, parseConversationId(rest.conversationId), user.email);
   }
 
   if (mode === "analyze") {

@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { loginPath } from "@/lib/authRedirect";
+import { loginErrorPath, loginPath, oauthErrorReason, withoutOAuthError } from "@/lib/authRedirect";
 
 /** Strony dostępne bez logowania. */
 const PUBLIC_PATHS = ["/login", "/auth"];
@@ -41,17 +41,28 @@ export async function updateSession(request: NextRequest) {
   const user = data?.claims;
 
   const { pathname, search } = request.nextUrl;
-  if (!user && !isPublic(pathname) && !pathname.startsWith("/api/")) {
-    // Zapamiętujemy, dokąd ktoś chciał wejść (?next=…) – po zalogowaniu tam wróci.
-    const loginUrl = new URL(loginPath(pathname + search), request.url);
-    // Przenosimy ciasteczka i nagłówki cache, jak zaleca dokumentacja.
-    const redirect = NextResponse.redirect(loginUrl);
+  // Przenosimy ciasteczka i nagłówki cache na przekierowanie, jak zaleca dokumentacja.
+  const redirectTo = (path: string) => {
+    const redirect = NextResponse.redirect(new URL(path, request.url));
     supabaseResponse.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     for (const header of ["cache-control", "expires", "pragma"]) {
       const value = supabaseResponse.headers.get(header);
       if (value) redirect.headers.set(header, value);
     }
     return redirect;
+  };
+
+  // Błąd logowania u Google, który Supabase odesłał na zwykłą stronę (np. przeterminowany stan
+  // logowania – „bad_oauth_state”): bez sesji → /login z komunikatem po polsku; z sesją → ta sama
+  // strona bez parametrów błędu. Trasy /auth/* obsługują błędy same.
+  const oauthReason = pathname.startsWith("/api/") || pathname.startsWith("/auth/") ? null : oauthErrorReason(request.nextUrl.searchParams);
+  if (oauthReason) {
+    return redirectTo(user ? withoutOAuthError(pathname, search) : loginErrorPath("/", oauthReason));
+  }
+
+  if (!user && !isPublic(pathname) && !pathname.startsWith("/api/")) {
+    // Zapamiętujemy, dokąd ktoś chciał wejść (?next=…) – po zalogowaniu tam wróci.
+    return redirectTo(loginPath(pathname + search));
   }
 
   // Zwracamy dokładnie ten obiekt, który zbudował setAll (z odświeżonymi ciasteczkami).

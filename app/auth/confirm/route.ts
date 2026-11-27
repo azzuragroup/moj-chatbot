@@ -1,7 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
-import { loginPath, safeNextPath } from "@/lib/authRedirect";
+import { loginErrorPath, safeNextPath } from "@/lib/authRedirect";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -27,7 +27,5 @@ export async function GET(request: NextRequest) {
       if (!error) redirect(next);
     }
   }
-  const failed = new URL(loginPath(next), request.url);
-  failed.searchParams.set("blad", "link");
-  redirect(failed.pathname + failed.search);
+  redirect(loginErrorPath(next, "link"));
 }

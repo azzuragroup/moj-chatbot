@@ -1,3 +1,4 @@
+import type { UIMessage } from "ai";
 import { redirect } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import Chat from "@/components/Chat";
@@ -6,7 +7,7 @@ import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { conversationExists, loadConversation, loadLatestConversation } from "@/lib/chatStore";
 import { parseConversationId } from "@/lib/chatPersistence";
 import { loadProfile } from "@/lib/profile";
-import { greetingName } from "@/lib/profileCore";
+import { WELCOME_MESSAGE_ID, greetingName, needsOnboarding, welcomeText } from "@/lib/profileCore";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +42,28 @@ export default async function Home({
   // Powitanie: imię z profilu zalogowanej osoby, a bez niego część e-maila przed @.
   const profile = persistence ? await loadProfile(db) : null;
 
+  // Pierwsze wejście: w profilu nie ma preferencji → nowa rozmowa zaczyna się od powitania agenta
+  // z dwoma pytaniami (rola – i imię, jeśli go nie znamy – oraz kanały i ton). Imię z konta Google
+  // trafia do profilu przy logowaniu, więc taka osoba jest witana po imieniu już w pierwszej rozmowie.
+  // Odpowiedzi agent zapisuje w profilu, więc przy kolejnych wejściach pytań już nie ma.
+  const onboarding = persistence && needsOnboarding(profile);
+  const welcome: UIMessage[] =
+    onboarding && !saved
+      ? [
+          {
+            id: WELCOME_MESSAGE_ID,
+            role: "assistant",
+            parts: [{ type: "text", text: welcomeText(greetingName(profile?.name, user.email), Boolean(profile?.name)) }],
+          },
+        ]
+      : [];
+
   return (
     <Chat
       userName={greetingName(profile?.name, user.email)}
-      askForName={!profile?.name}
+      onboarding={onboarding}
       initialConversationId={saved?.id ?? null}
-      initialMessages={saved?.messages ?? []}
+      initialMessages={saved?.messages ?? welcome}
       persistence={persistence}
     />
   );

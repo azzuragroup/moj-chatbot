@@ -2,7 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { useCurrentUserEmail } from "./CurrentUser";
+import { avatarInitial } from "@/lib/userDisplay";
+import { useCurrentUser } from "./CurrentUser";
 import { AUTH_CHANNEL } from "./SessionGuard";
 import ThemeSelect from "./ThemeSelect";
 
@@ -16,11 +17,11 @@ const TABS = [
   { href: "/planer", label: "Planer social media" },
 ];
 
-/** Nagłówek wszystkich stron: logo, tytuł, motyw, e-mail zalogowanej osoby, wylogowanie i zakładki. */
+/** Nagłówek wszystkich stron: logo, tytuł, motyw, avatar i imię zalogowanej osoby, wylogowanie i zakładki. */
 export default function AppHeader() {
   const pathname = usePathname();
-  const email = useCurrentUserEmail();
-  const signedIn = Boolean(email);
+  const user = useCurrentUser();
+  const signedIn = Boolean(user);
   const [leaving, setLeaving] = useState(false);
 
   async function logout() {
@@ -59,8 +60,9 @@ export default function AppHeader() {
           <ThemeSelect />
           {signedIn && (
             <>
-              <span className="app-user" title={email ?? undefined}>
-                {email}
+              <span className="app-user" title={user?.email}>
+                {user && <Avatar url={user.avatarUrl} initial={avatarInitial(user.name, user.email)} />}
+                <span className="app-user-name">{user?.name ?? user?.email}</span>
               </span>
               <button type="button" className="button-secondary" onClick={logout} disabled={leaving}>
                 {leaving ? "Wylogowuję…" : "Wyloguj"}
@@ -79,5 +81,32 @@ export default function AppHeader() {
         </nav>
       )}
     </>
+  );
+}
+
+/**
+ * Zdjęcie z konta Google, a gdy go nie ma albo się nie wczyta – kółko z pierwszą literą imienia.
+ * Zwykły img (bez optymalizacji Next.js); no-referrer – Google nie dostaje adresu strony.
+ */
+function Avatar({ url, initial }: { url: string | null; initial: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <span className="app-avatar app-avatar-initial" aria-hidden="true">
+        {initial}
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="app-avatar"
+      src={url}
+      alt=""
+      width={28}
+      height={28}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
   );
 }

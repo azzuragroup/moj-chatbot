@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import LoginForm from "@/components/LoginForm";
+import { loginErrorMessage } from "@/lib/authMessages";
 import { safeNextPath } from "@/lib/authRedirect";
 import { authEnv, getCurrentUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-const LINK_ERROR = "Link potwierdzający jest nieprawidłowy albo wygasł. Zaloguj się albo załóż konto jeszcze raz.";
 
 /**
  * Logowanie i zakładanie konta. Po zalogowaniu wracamy na stronę z ?next=…
@@ -25,7 +24,7 @@ export default async function LoginPage({
     <main className="login-page">
       <AppHeader />
       {authEnv() ? (
-        <LoginForm next={next} initialError={params.blad === "link" ? LINK_ERROR : ""} />
+        <LoginForm next={next} initialError={loginErrorMessage(params.blad)} />
       ) : (
         <div className="card login-card">
           <p className="warning">

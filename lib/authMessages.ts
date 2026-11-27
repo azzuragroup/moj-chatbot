@@ -88,3 +88,19 @@ export function signUpOutcome(data: SignUpData): "signed-in" | "confirm" | "exis
   if (Array.isArray(user.identities) && user.identities.length === 0) return "exists";
   return "confirm";
 }
+
+/** Komunikat na /login po nieudanym powrocie (?blad=…). Nieznana wartość – brak komunikatu. */
+export function loginErrorMessage(reason: unknown): string {
+  switch (reason) {
+    case "link":
+      return "Link potwierdzający jest nieprawidłowy albo wygasł. Zaloguj się albo załóż konto jeszcze raz.";
+    case "google":
+      return "Nie udało się zalogować przez Google. Spróbuj ponownie albo zaloguj się e-mailem.";
+    case "google-anulowane":
+      return "Logowanie przez Google zostało anulowane. Możesz spróbować jeszcze raz albo zalogować się e-mailem.";
+    case "google-wygaslo":
+      return "Logowanie przez Google trwało zbyt długo i wygasło. Kliknij „Zaloguj przez Google” jeszcze raz.";
+    default:
+      return "";
+  }
+}

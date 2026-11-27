@@ -34,10 +34,20 @@ export async function conversationExists(db: UserDb | null, id: number): Promise
   return Boolean(data);
 }
 
-/** Zapisuje parę: pytanie użytkownika i odpowiedź agenta – jednym zapytaniem, w tej kolejności. */
-export async function saveExchange(db: UserDb | null, conversationId: number, userText: string, assistantText: string) {
+/**
+ * Zapisuje parę: pytanie użytkownika i odpowiedź agenta – jednym zapytaniem, w tej kolejności.
+ * welcomeText: powitanie agenta z pierwszego wejścia – zapisywane przed pytaniem (tylko w nowej rozmowie).
+ */
+export async function saveExchange(
+  db: UserDb | null,
+  conversationId: number,
+  userText: string,
+  assistantText: string,
+  welcomeText = "",
+) {
   if (!db) return false;
   const rows = [
+    ...(welcomeText ? [{ conversation_id: conversationId, role: "assistant", content: welcomeText }] : []),
     ...(userText ? [{ conversation_id: conversationId, role: "user", content: userText }] : []),
     ...(assistantText ? [{ conversation_id: conversationId, role: "assistant", content: assistantText }] : []),
   ];

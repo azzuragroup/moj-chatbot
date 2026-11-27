@@ -3,13 +3,15 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 /**
- * E-mail zalogowanej osoby – tylko do wyświetlenia w nagłówku.
- * Wartość ustala serwer (layout → getCurrentUser), przeglądarka niczego tu nie decyduje.
+ * Zalogowana osoba – tylko do wyświetlenia w nagłówku: e-mail, imię i avatar z konta Google.
+ * Wartości ustala serwer (layout → getCurrentUser, zweryfikowana sesja), przeglądarka niczego tu nie decyduje.
  */
-const CurrentUserEmail = createContext<string | null>(null);
+export type HeaderUser = { email: string; name: string | null; avatarUrl: string | null };
 
-export function CurrentUserProvider({ email, children }: { email: string | null; children: ReactNode }) {
-  return <CurrentUserEmail value={email}>{children}</CurrentUserEmail>;
+const CurrentUserContext = createContext<HeaderUser | null>(null);
+
+export function CurrentUserProvider({ user, children }: { user: HeaderUser | null; children: ReactNode }) {
+  return <CurrentUserContext value={user}>{children}</CurrentUserContext>;
 }
 
-export const useCurrentUserEmail = () => useContext(CurrentUserEmail);
+export const useCurrentUser = () => useContext(CurrentUserContext);

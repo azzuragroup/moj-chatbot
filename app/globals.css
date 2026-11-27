@@ -1604,15 +1604,30 @@ a.badge:hover {
   padding: 10px 12px;
 }
 
-/* E-mail zalogowanej osoby w nagłówku. */
+/* Zalogowana osoba w nagłówku: avatar z Google i imię (albo sam e-mail). */
 .app-user {
   align-self: center;
-  max-width: 240px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.app-user-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  color: var(--muted);
+}
+
+.app-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--line);
 }
 
 @media (max-width: 640px) {
@@ -1643,4 +1658,40 @@ a.badge:hover {
 
 .not-found-actions a {
   text-decoration: none;
+}
+
+/* Logowanie: „albo” i przycisk Google. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.google-button {
+  width: 100%;
+  gap: 10px;
+}
+
+/* Kółko z pierwszą literą, gdy konto nie ma zdjęcia. */
+.app-avatar-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: var(--tab-active-bg);
+  color: var(--heading);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
 }
