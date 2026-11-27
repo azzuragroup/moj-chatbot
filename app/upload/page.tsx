@@ -1,22 +1,22 @@
-import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
-import Login from "@/components/Login";
 import UploadForm, { type DocumentItem } from "@/components/UploadForm";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { loginPath } from "@/lib/authRedirect";
+import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { formatVersion } from "@/lib/chunkingCore";
 import { listDocuments } from "@/lib/knowledge";
-import { isSupabaseConfigured } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 /** Baza wiedzy: wklejanie dokumentów i lista dokumentów. Tylko po zalogowaniu. */
 export default async function UploadPage() {
-  // Najpierw sesja: bez logowania nie czytamy niczego z bazy.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) return <Login />;
+  // Najpierw zweryfikowana sesja (serwer): bez logowania nie czytamy niczego z bazy.
+  if (!(await getCurrentUser())) redirect(loginPath("/upload"));
 
-  const configured = isSupabaseConfigured();
-  const docs = configured ? await listDocuments() : null;
+  // Tylko własne dokumenty zalogowanej osoby (RLS).
+  const db = await getUserDb();
+  const configured = db !== null;
+  const docs = configured ? await listDocuments(db) : null;
   const items: DocumentItem[] = (docs ?? []).map((d) => ({
     id: d.id,
     title: d.title,

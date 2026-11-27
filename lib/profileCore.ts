@@ -148,3 +148,14 @@ export function profileForPrompt(profile: { name: string | null; preferences: Pr
 ${lines.join("\n")}
 </profil>`;
 }
+
+/**
+ * Imię do powitania „Cześć, <imię>!”: z profilu, a gdy go nie ma – część e-maila przed @.
+ * Zwraca null, gdy nie ma ani imienia, ani e-maila.
+ */
+export function greetingName(profileName: string | null | undefined, email: string | null | undefined): string | null {
+  const name = profileName?.replace(/\s+/g, " ").trim();
+  if (name) return name.slice(0, MAX_NAME);
+  const local = email?.split("@")[0]?.trim();
+  return local ? local.slice(0, MAX_NAME) : null;
+}

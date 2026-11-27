@@ -1,7 +1,6 @@
 import { generateText } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { COMPARE_INSTRUCTIONS } from "@/lib/prompt";
 import {
   RESULT_FORMAT,
@@ -15,8 +14,8 @@ import {
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 

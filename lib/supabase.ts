@@ -3,9 +3,12 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Jedyne miejsce, w którym aplikacja łączy się z Supabase.
- * Klucz SUPABASE_SECRET_KEY omija RLS, dlatego zostaje wyłącznie na serwerze
- * (bez przedrostka NEXT_PUBLIC_, bez importów w komponentach klienckich).
+ * Klient z kluczem SUPABASE_SECRET_KEY – tylko dla wspólnej bazy wiedzy
+ * (documents, chunks, match_chunks). Ten klucz omija RLS, dlatego zostaje wyłącznie
+ * na serwerze (bez przedrostka NEXT_PUBLIC_, bez importów w komponentach klienckich).
+ *
+ * Rozmowy, wiadomości i profil NIE idą tędy: czyta je i zapisuje klient zalogowanej
+ * osoby (getUserDb w lib/supabase/server.ts – klucz publishable + jej sesja), więc pilnuje ich RLS.
  */
 let client: SupabaseClient | null = null;
 

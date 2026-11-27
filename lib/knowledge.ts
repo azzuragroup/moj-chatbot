@@ -1,7 +1,7 @@
 import "server-only";
 import { embed, embedMany, tool } from "ai";
 import { z } from "zod";
-import { getSupabase } from "./supabase";
+import type { UserDb } from "./supabase/server";
 import { EMBEDDING_DIMENSIONS, getEmbeddingModel } from "./model";
 import {
   MIN_SIMILARITY,
@@ -16,6 +16,9 @@ import {
 
 /**
  * Baza wiedzy: dokumenty (tabela documents) i ich fragmenty z embeddingami (tabela chunks).
+ * Prywatna dla każdej osoby: wszystko idzie klientem zalogowanej osoby (getUserDb –
+ * klucz publishable + jej sesja), więc RLS pokazuje i zmienia tylko jej własne dokumenty,
+ * a match_chunks przeszukuje tylko jej fragmenty. user_id wypełnia baza (auth.uid()).
  *
  * Etapy importu (każdy zgłaszany przez onStage, żeby formularz pokazał postęp):
  * 1. split – dzielimy tekst na fragmenty,
@@ -44,8 +47,7 @@ export type ImportSuccess = {
 };
 
 /** Lista dokumentów: tytuł (źródło), data dodania (wersja), liczba fragmentów. */
-export async function listDocuments(): Promise<KnowledgeDocument[] | null> {
-  const db = getSupabase();
+export async function listDocuments(db: UserDb | null): Promise<KnowledgeDocument[] | null> {
   if (!db) return null;
   const { data, error } = await db
     .from("documents")
@@ -64,9 +66,11 @@ export async function listDocuments(): Promise<KnowledgeDocument[] | null> {
   }));
 }
 
-/** Usuwa dokument (jego fragmenty kasuje ON DELETE CASCADE). Zwraca, czy coś usunięto. */
-export async function deleteDocument(id: number): Promise<{ ok: boolean; deleted: number }> {
-  const db = getSupabase();
+/**
+ * Usuwa dokument (jego fragmenty kasuje ON DELETE CASCADE). Zwraca, ile usunięto –
+ * cudzy dokument RLS „nie widzi”, więc wynik to 0 (endpoint zwraca wtedy 404).
+ */
+export async function deleteDocument(db: UserDb | null, id: number): Promise<{ ok: boolean; deleted: number }> {
   if (!db) return { ok: false, deleted: 0 };
   const { error, count } = await db.from("documents").delete({ count: "exact" }).eq("id", id);
   if (error) {
@@ -87,11 +91,17 @@ const fail = (stage: ImportStage, message: string, hint: string, extra: Partial<
 const SAVE_HINT = "Spróbuj ponownie za chwilę. Jeśli błąd się powtarza, sprawdź, czy projekt w Supabase działa.";
 
 export async function importDocument(
+  db: UserDb | null,
   input: { title: string; content: string; replace: boolean; mode?: SplitMode },
   onStage: (stage: ImportStage) => void = () => {},
 ): Promise<ImportFailure | ImportSuccess> {
-  const db = getSupabase();
-  if (!db) return fail("split", "Baza wiedzy jest wyłączona – brak konfiguracji bazy na serwerze.", "Uzupełnij SUPABASE_URL i SUPABASE_SECRET_KEY.");
+  if (!db) {
+    return fail(
+      "split",
+      "Baza wiedzy jest wyłączona – brak konfiguracji Supabase na serwerze.",
+      "Uzupełnij NEXT_PUBLIC_SUPABASE_URL i NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+    );
+  }
   const model = getEmbeddingModel();
   if (!model) {
     return fail("split", "Brak konfiguracji modelu embeddingów na serwerze.", "Uzupełnij OPENROUTER_EMBEDDING_MODEL i OPENROUTER_API_KEY.");
@@ -102,7 +112,8 @@ export async function importDocument(
   const chunks = splitByMode(input.content, input.mode);
   if (chunks.length === 0) return fail("split", "Treść nie zawiera tekstu.", "Wklej treść dokumentu i spróbuj ponownie.");
 
-  // Poprzednie wersje o tym samym tytule (bez rozróżniania wielkości liter i odstępów).
+  // Poprzednie wersje o tym samym tytule (bez rozróżniania wielkości liter i odstępów) –
+  // tylko własne dokumenty (RLS), więc cudzy dokument o tym samym tytule nigdy nie zostanie zastąpiony.
   const { data: all, error: listError } = await db.from("documents").select("id, title");
   if (listError) {
     console.error("[baza wiedzy] nie udało się sprawdzić tytułów", listError.code, listError.message);
@@ -167,7 +178,7 @@ export async function importDocument(
   const { error: chunksError } = await db.from("chunks").insert(rows);
   if (chunksError) {
     console.error("[baza wiedzy] nie udało się zapisać fragmentów", chunksError.code, chunksError.message);
-    await deleteDocument(documentId); // sprzątanie niedokończonego dokumentu
+    await deleteDocument(db, documentId); // sprzątanie niedokończonego dokumentu
     return fail(
       "save",
       "Nie udało się zapisać fragmentów, więc dokument nie został dodany.",
@@ -213,13 +224,13 @@ export async function importDocument(
 }
 
 /**
- * Narzędzie agenta: wyszukiwanie w bazie wiedzy. Pytanie → embedding (ten sam model co przy
- * imporcie) → funkcja match_chunks w Supabase → 3 najlepiej pasujące fragmenty.
- * Działa tylko w endpoincie czatu, który najpierw sprawdza sesję.
+ * Narzędzie agenta: wyszukiwanie w bazie wiedzy zalogowanej osoby. Pytanie → embedding (ten sam
+ * model co przy imporcie) → funkcja match_chunks w Supabase (jej sesją, więc tylko jej fragmenty)
+ * → 3 najlepiej pasujące fragmenty. Tworzone osobno dla każdego zapytania czatu, po sprawdzeniu sesji.
  */
-export const searchKnowledge = tool({
+export const createSearchKnowledgeTool = (db: UserDb | null) => tool({
   description:
-    "Wyszukuje w bazie wiedzy Azzura Group (dokumenty dodane przez pracowników: oferta, cennik, " +
+    "Wyszukuje w bazie wiedzy użytkownika (dokumenty, które sam dodał: oferta, cennik, " +
     "zasady, regulamin, informacje o firmie). Używaj przy KAŻDYM pytaniu o firmę, ofertę, ceny, " +
     "zasady i regulamin – zanim odpowiesz. Zwraca do 3 najlepiej pasujących fragmentów (tylko powyżej " +
     "progu podobieństwa): tytuł dokumentu, treść fragmentu i podobieństwo (0–1). Pusta lista = brak " +
@@ -234,7 +245,6 @@ export const searchKnowledge = tool({
   }),
   execute: async ({ pytanie }, { abortSignal }) => {
     const pobrano = new Date().toISOString();
-    const db = getSupabase();
     const model = getEmbeddingModel();
     if (!db || !model) return { blad: "Baza wiedzy jest niedostępna – brak konfiguracji na serwerze.", pobrano };
 
@@ -258,7 +268,7 @@ export const searchKnowledge = tool({
       fragmenty,
       uwaga: rows.length
         ? `Żaden fragment nie przekroczył progu podobieństwa ${Math.round(MIN_SIMILARITY * 100)}% – w bazie wiedzy nie ma odpowiedzi na to pytanie.`
-        : "Baza wiedzy jest pusta albo nie ma w niej fragmentów z embeddingami.",
+        : "Twoja baza wiedzy jest pusta albo nie ma w niej fragmentów z embeddingami.",
       pobrano,
     };
   },

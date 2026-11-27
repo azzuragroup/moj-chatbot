@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { cardsToPrompt, summaryRequestSchema } from "@/lib/travel";
 import { runTravelSummary } from "@/lib/agent";
 
@@ -7,9 +6,8 @@ export const maxDuration = 30;
 
 /** Podsumowanie od agenta (2–3 zdania) na podstawie danych z kart. Płatne wywołanie modelu. */
 export async function POST(req: Request) {
-  // Najpierw sesja: bez logowania model nie jest wywoływany.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 

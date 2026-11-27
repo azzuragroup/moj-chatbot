@@ -42,10 +42,10 @@ import { createInstagramTool } from "./instagramTool";
 import { MAX_STEPS, hitStepLimit, isLastStep } from "./steps";
 import { completeSentences, endsWithSentence } from "./travelHelpers";
 import { cleanTitle, messageToText } from "./chatPersistence";
-import { loadProfile, zapiszProfil } from "./profile";
-import { searchKnowledge } from "./knowledge";
+import { createZapiszProfilTool, loadProfile } from "./profile";
+import { createSearchKnowledgeTool } from "./knowledge";
 import { missingFieldsInstruction, profileForPrompt } from "./profileCore";
-import { isSupabaseConfigured } from "./supabase";
+import type { UserDb } from "./supabase/server";
 import { conversationExists, createConversation, deleteIfEmpty, saveExchange, updateConversationTitle } from "./chatStore";
 import {
   SLOW_TOOLS,
@@ -59,24 +59,34 @@ import {
 
 type Config = { apiKey: string; modelId: string };
 
-/** Tryb "chat": rozmowa ze streamingiem i narzędziami. */
+/**
+ * Tryb "chat": rozmowa ze streamingiem i narzędziami.
+ * db – klient zalogowanej osoby (getUserDb, utworzony w trasie po sprawdzeniu sesji):
+ * rozmowy, wiadomości i profil czytamy i zapisujemy z jej sesją, więc pilnuje RLS.
+ */
 export async function runChat(
+  db: UserDb | null,
   messages: UIMessage[],
   { apiKey, modelId }: Config,
   abortSignal?: AbortSignal,
   requestedConversationId: number | null = null,
 ) {
   // Zapis rozmowy: pierwsza wiadomość tworzy rozmowę w bazie, kolejne dopisują się
-  // do istniejącej. Bez konfiguracji Supabase czat działa dalej, tylko bez zapisu.
+  // do istniejącej – tylko własnej. Cudzej (albo usuniętej) RLS „nie widzi”: odpowiadamy 404,
+  // zanim wywołamy model, i niczego nie zapisujemy.
+  // Bez konfiguracji Supabase czat działa dalej, tylko bez zapisu.
   const lastUser = messages[messages.length - 1];
   const userText = lastUser?.role === "user" ? messageToText(lastUser) : "";
   let conversationId: number | null = null;
   let createdNow = false;
-  if (userText) {
-    if (requestedConversationId && (await conversationExists(requestedConversationId))) {
+  if (db && requestedConversationId && !(await conversationExists(db, requestedConversationId))) {
+    return new Response("Nie znaleziono rozmowy. Zacznij nową rozmowę.", { status: 404 });
+  }
+  if (db && userText) {
+    if (requestedConversationId) {
       conversationId = requestedConversationId;
     } else {
-      conversationId = await createConversation(userText);
+      conversationId = await createConversation(db, userText);
       createdNow = conversationId !== null;
     }
   }
@@ -93,8 +103,8 @@ export async function runChat(
     czas,
     notatki,
     sprawdzFirme,
-    zapiszProfil,
-    searchKnowledge,
+    zapiszProfil: createZapiszProfilTool(db),
+    searchKnowledge: createSearchKnowledgeTool(db),
     katalogProduktow,
     postInstagram: createInstagramTool(apiKey),
     generujObraz: createImageTool(apiKey),
@@ -116,11 +126,11 @@ export async function runChat(
 
   // Pamięć o użytkowniku: profil z bazy dołączany do instrukcji przed każdą odpowiedzią
   // (jako dane w znaczniku <profil>, nie polecenia).
-  const profile = await loadProfile();
+  const profile = await loadProfile(db);
   // O brakujące preferencje marketingowe dopytujemy tylko w pierwszej odpowiedzi rozmowy
   // (i tylko gdy baza działa – bez niej nie ma gdzie zapisać).
   const firstInConversation = messages.filter((m) => m.role === "user").length === 1;
-  const askMissing = isSupabaseConfigured() && firstInConversation ? missingFieldsInstruction(profile?.preferences ?? {}) : "";
+  const askMissing = db && firstInConversation ? missingFieldsInstruction(profile?.preferences ?? {}) : "";
   const chatInstructions = [INSTRUCTIONS, profileForPrompt(profile), askMissing].filter(Boolean).join("\n\n");
 
   // Ustawiane w prepareStep, gdy agent musi kończyć: limit kroków, narzędzi albo czasu.
@@ -195,14 +205,14 @@ export async function runChat(
         const response = all[all.length - 1];
         const answerText = response?.role === "assistant" ? messageToText(response, { aborted: isAborted }) : "";
         if (answerText || isAborted) {
-          const saved = await saveExchange(conversationId, userText, answerText);
+          const saved = await saveExchange(db, conversationId, userText, answerText);
           // Tytuł od modelu tylko raz: po pierwszej pełnej odpowiedzi w nowej rozmowie.
           if (saved && createdNow && !isAborted && answerText) {
-            await nameConversation(conversationId, userText, answerText, { apiKey, modelId });
+            await nameConversation(db, conversationId, userText, answerText, { apiKey, modelId });
           }
         } else if (createdNow) {
           // Błąd modelu przed odpowiedzią: nie zostawiamy pustej rozmowy.
-          await deleteIfEmpty(conversationId);
+          await deleteIfEmpty(db, conversationId);
         }
       },
       messageMetadata: ({ part }) => {
@@ -450,7 +460,7 @@ export async function runWeekDrafts(posts: { data: string; slug: string }[], { a
  * więc dajemy zapas i ponawiamy raz, gdy tekst wyjdzie pusty.
  * Przy błędzie zostaje tytuł z pierwszej wiadomości.
  */
-async function nameConversation(id: number, userText: string, answerText: string, { apiKey, modelId }: Config) {
+async function nameConversation(db: UserDb | null, id: number, userText: string, answerText: string, { apiKey, modelId }: Config) {
   const model = createOpenRouter({ apiKey }).chat(modelId);
   const prompt = `<rozmowa>\nUżytkownik: ${userText.slice(0, 1500)}\nAsystent: ${answerText.slice(0, 1500)}\n</rozmowa>`;
   for (const maxOutputTokens of [1500, 3000]) {
@@ -474,7 +484,7 @@ async function nameConversation(id: number, userText: string, answerText: string
         jestTytul: Boolean(title),
       });
       if (title) {
-        const saved = await updateConversationTitle(id, title);
+        const saved = await updateConversationTitle(db, id, title);
         console.info("[tytuł] zapisany w conversations.title:", saved ? "tak" : "nie");
         return;
       }

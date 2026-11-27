@@ -1,11 +1,12 @@
-import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import Dashboard from "@/components/Dashboard";
-import Login from "@/components/Login";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { loginPath } from "@/lib/authRedirect";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  return hasValidSession(session) ? <Dashboard /> : <Login />;
+  // Najpierw zweryfikowana sesja (serwer); bez niej – strona logowania.
+  if (!(await getCurrentUser())) redirect(loginPath("/dashboard"));
+  return <Dashboard />;
 }

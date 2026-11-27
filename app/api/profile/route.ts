@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { z } from "zod";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { replaceProfile } from "@/lib/profile";
 import { MAX_KEY, MAX_NAME, MAX_VALUE, MAX_FACTS } from "@/lib/profileCore";
 
@@ -15,11 +14,10 @@ const requestSchema = z.discriminatedUnion("mode", [
   z.strictObject({ mode: z.literal("clear") }),
 ]);
 
-/** Profil użytkownika: poprawianie, usuwanie pozycji i czyszczenie (zawsze ten sam wiersz). */
+/** Profil zalogowanej osoby: poprawianie, usuwanie pozycji i czyszczenie (zawsze jej własny wiersz). */
 export async function POST(req: Request) {
-  // Najpierw sesja: bez logowania nie dotykamy bazy.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 
@@ -34,10 +32,12 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, message: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." }, { status: 400 });
   }
   const body = parsed.data;
+  // Własny profil zalogowanej osoby (RLS); user_id nie jest przyjmowany z przeglądarki.
+  const db = await getUserDb();
   const result =
     body.mode === "clear"
-      ? await replaceProfile({ name: null, preferences: {} })
-      : await replaceProfile({ name: body.name || null, preferences: body.preferences });
+      ? await replaceProfile(db, { name: null, preferences: {} })
+      : await replaceProfile(db, { name: body.name || null, preferences: body.preferences });
   if (!result.ok) return Response.json({ ok: false, message: result.blad }, { status: 500 });
   return Response.json({ ok: true, profile: result.profile, odrzucone: result.rejected });
 }

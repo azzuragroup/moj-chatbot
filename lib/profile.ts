@@ -1,7 +1,7 @@
 import "server-only";
 import { tool } from "ai";
 import { z } from "zod";
-import { getSupabase } from "./supabase";
+import type { UserDb } from "./supabase/server";
 import {
   MAX_KEY,
   MAX_NAME,
@@ -13,21 +13,18 @@ import {
 } from "./profileCore";
 
 /**
- * Profil użytkownika w tabeli user_profiles. Do lekcji 7 aplikacja ma jednego
- * właściciela, więc profil to jeden wiersz (najstarszy) – zapis go aktualizuje.
+ * Profil zalogowanej osoby w tabeli user_profiles: jeden wiersz na użytkownika
+ * (unikalny user_id). Wszystko idzie klientem zalogowanej osoby (getUserDb),
+ * więc RLS pokazuje i zmienia tylko jej własny wiersz. user_id wypełnia baza
+ * (domyślnie auth.uid()) – nie podajemy go ani z przeglądarki, ani od modelu.
  */
 
 export type Profile = { id: number; name: string | null; preferences: Preferences };
 
-export async function loadProfile(): Promise<Profile | null> {
-  const db = getSupabase();
+export async function loadProfile(db: UserDb | null): Promise<Profile | null> {
   if (!db) return null;
-  const { data, error } = await db
-    .from("user_profiles")
-    .select("id, name, preferences")
-    .order("id", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // RLS zwraca wyłącznie wiersz zalogowanej osoby (najwyżej jeden – user_id jest unikalny).
+  const { data, error } = await db.from("user_profiles").select("id, name, preferences").maybeSingle();
   if (error) {
     console.error("[baza] nie udało się wczytać profilu", error.code, error.message);
     return null;
@@ -36,16 +33,26 @@ export async function loadProfile(): Promise<Profile | null> {
   return { id: data.id as number, name: (data.name as string | null) ?? null, preferences: mergePreferences(data.preferences, {}) };
 }
 
-/** Aktualizuje jedyny wiersz profilu (albo tworzy go, gdy go jeszcze nie ma). */
-export async function saveProfile(update: { name?: string; preferences: Preferences }) {
-  const db = getSupabase();
+/**
+ * Zapis wiersza profilu: aktualizacja istniejącego albo utworzenie nowego.
+ * Gdy dwa zapisy naraz próbują utworzyć profil, drugi trafi na unikalny user_id (23505) –
+ * wtedy wczytujemy wiersz jeszcze raz i go aktualizujemy.
+ */
+async function writeProfileRow(db: UserDb, current: Profile | null, row: { name?: string | null; preferences: Preferences }) {
+  if (current) return db.from("user_profiles").update(row).eq("id", current.id);
+  const inserted = await db.from("user_profiles").insert(row);
+  if (inserted.error?.code !== "23505") return inserted;
+  const again = await loadProfile(db);
+  return again ? db.from("user_profiles").update(row).eq("id", again.id) : inserted;
+}
+
+/** Dopisuje fakty do profilu zalogowanej osoby (albo tworzy go, gdy go jeszcze nie ma). */
+export async function saveProfile(db: UserDb | null, update: { name?: string; preferences: Preferences }) {
   if (!db) return { ok: false as const, blad: "Pamięć o użytkowniku jest wyłączona – brak konfiguracji bazy." };
-  const current = await loadProfile();
+  const current = await loadProfile(db);
   const preferences = mergePreferences(current?.preferences ?? {}, update.preferences);
   const row = { ...(update.name ? { name: update.name } : {}), preferences };
-  const { error } = current
-    ? await db.from("user_profiles").update(row).eq("id", current.id)
-    : await db.from("user_profiles").insert(row);
+  const { error } = await writeProfileRow(db, current, row);
   if (error) {
     console.error("[baza] nie udało się zapisać profilu", error.code, error.message);
     return { ok: false as const, blad: "Nie udało się zapisać profilu w bazie." };
@@ -53,7 +60,11 @@ export async function saveProfile(update: { name?: string; preferences: Preferen
   return { ok: true as const, name: update.name ?? current?.name ?? null, preferences };
 }
 
-export const zapiszProfil = tool({
+/**
+ * Narzędzie zapiszProfil dla jednej rozmowy: zapisuje w profilu osoby, która jest zalogowana
+ * w tym zapytaniu (db z jej sesją). Model podaje tylko fakty – nie ma jak wskazać innej osoby.
+ */
+export const createZapiszProfilTool = (db: UserDb | null) => tool({
   description:
     "Zapisuje w pamięci (profil w bazie) fakty, które użytkownik wprost mówi o sobie: imię oraz np. " +
     "miasto, stanowisko, styl lub długość odpowiedzi, a przede wszystkim preferencje marketingowe: " +
@@ -96,7 +107,7 @@ export const zapiszProfil = tool({
         pobrano,
       };
     }
-    const result = await saveProfile({ name, preferences: accepted });
+    const result = await saveProfile(db, { name, preferences: accepted });
     if (!result.ok) return { blad: result.blad, pobrano };
     return {
       zapamietano: { ...(name ? { imie: name } : {}), ...accepted },
@@ -108,22 +119,19 @@ export const zapiszProfil = tool({
 });
 
 /**
- * Zapis z formularza /profile: zastępuje imię i preferencje w tym samym wierszu
+ * Zapis z formularza /profile: zastępuje imię i preferencje we własnym wierszu
  * (to, co użytkownik usunął, znika). Dane wrażliwe są odrzucane jak przy narzędziu.
  */
-export async function replaceProfile(input: { name: string | null; preferences: Record<string, string> }) {
-  const db = getSupabase();
+export async function replaceProfile(db: UserDb | null, input: { name: string | null; preferences: Record<string, string> }) {
   if (!db) return { ok: false as const, blad: "Profil jest wyłączony – brak konfiguracji bazy." };
   const name = input.name === null ? null : sanitizeName(input.name) ?? null;
   const { accepted, rejected } = sanitizeFacts(
     Object.entries(input.preferences).map(([nazwa, wartosc]) => ({ nazwa, wartosc })),
   );
   const preferences = mergePreferences({}, accepted);
-  const current = await loadProfile();
+  const current = await loadProfile(db);
   const row = { name, preferences };
-  const { error } = current
-    ? await db.from("user_profiles").update(row).eq("id", current.id)
-    : await db.from("user_profiles").insert(row);
+  const { error } = await writeProfileRow(db, current, row);
   if (error) {
     console.error("[baza] nie udało się zapisać profilu", error.code, error.message);
     return { ok: false as const, blad: "Nie udało się zapisać profilu w bazie." };

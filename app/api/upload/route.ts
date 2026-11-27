@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { z } from "zod";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { MAX_CONTENT, MAX_TITLE, SPLIT_MODES } from "@/lib/chunkingCore";
 import { importDocument } from "@/lib/knowledge";
 
@@ -24,9 +23,8 @@ const requestSchema = z.strictObject({
  * najpierw etapy {"stage":"split"|"embed"|"save"}, na końcu wynik {"ok":true,…} albo {"ok":false,…}.
  */
 export async function POST(req: Request) {
-  // Najpierw sesja: bez logowania nie dotykamy bazy ani modelu.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 
@@ -41,12 +39,14 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, message: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." }, { status: 400 });
   }
 
+  // Dokument zapisuje się klientem zalogowanej osoby – user_id ustala baza z jej sesji.
+  const db = await getUserDb();
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       try {
-        const result = await importDocument(parsed.data, (stage) => send({ stage }));
+        const result = await importDocument(db, parsed.data, (stage) => send({ stage }));
         send(result);
       } catch (err) {
         console.error("[baza wiedzy] nieoczekiwany błąd importu", err instanceof Error ? err.name : "");

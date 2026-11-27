@@ -51,8 +51,10 @@ type ChatProps = {
   persistence?: boolean;
   /** Komunikat z serwera, np. że rozmowy z adresu już nie ma. */
   notice?: string;
-  /** Imię z profilu – do powitania w nowej rozmowie. */
+  /** Imię do powitania „Cześć, <imię>!” (z profilu albo część e-maila przed @). */
   userName?: string | null;
+  /** Gdy w profilu nie ma imienia – zachęta, żeby je podać. */
+  askForName?: boolean;
 };
 
 /** Adres w przeglądarce pokazuje bieżącą rozmowę – F5 wraca do tej samej. */
@@ -70,6 +72,7 @@ export default function Chat({
   persistence = false,
   notice = "",
   userName = null,
+  askForName = false,
 }: ChatProps) {
   const [input, setInput] = useState("");
   const [image, setImage] = useState<FileUIPart | null>(null);
@@ -187,14 +190,10 @@ export default function Chat({
         {messages.length === 0 && (
           <div className="chat-empty">
             {notice && <p className="warning" style={{ marginTop: 0 }}>{notice}</p>}
-            {userName ? (
+            {userName ? <>Cześć, {userName}! 🔵 </> : <>Cześć! </>}
+            W czym dziś pomogę – post, opis produktu, mail czy odpowiedź na zapytanie ofertowe?
+            {askForName && (
               <>
-                Dzień dobry, {userName}! 🔵 W czym dziś pomogę – post, opis produktu, mail czy odpowiedź na
-                zapytanie ofertowe?
-              </>
-            ) : (
-              <>
-                Dzień dobry! Pomogę napisać post, opis produktu, mail albo odpowiedź na zapytanie ofertowe.
                 <br />
                 Jak mam się do Ciebie zwracać? Napisz np. „Mam na imię Ola” – zapamiętam to.
               </>

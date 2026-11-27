@@ -1,6 +1,9 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { useCurrentUserEmail } from "./CurrentUser";
+import { AUTH_CHANNEL } from "./SessionGuard";
 import ThemeSelect from "./ThemeSelect";
 
 const TABS = [
@@ -13,10 +16,30 @@ const TABS = [
   { href: "/planer", label: "Planer social media" },
 ];
 
-/** Nagłówek wszystkich stron: logo, tytuł, motyw, wyjście i zakładki. */
-export default function AppHeader({ signedIn = true }: { signedIn?: boolean }) {
-  const router = useRouter();
+/** Nagłówek wszystkich stron: logo, tytuł, motyw, e-mail zalogowanej osoby, wylogowanie i zakładki. */
+export default function AppHeader() {
   const pathname = usePathname();
+  const email = useCurrentUserEmail();
+  const signedIn = Boolean(email);
+  const [leaving, setLeaving] = useState(false);
+
+  async function logout() {
+    setLeaving(true);
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch {
+      // Nawet bez odpowiedzi przechodzimy na /login – serwer i tak sprawdzi sesję.
+    }
+    // Inne karty tej aplikacji też czyszczą ekran.
+    try {
+      const channel = new BroadcastChannel(AUTH_CHANNEL);
+      channel.postMessage("logout");
+      channel.close();
+    } catch {}
+    // replace + pełne przeładowanie: znika cały stan strony (rozmowa, historia, profil),
+    // a bieżąca strona nie zostaje w historii pod przyciskiem „Wstecz”.
+    window.location.replace("/login");
+  }
 
   return (
     <>
@@ -35,16 +58,14 @@ export default function AppHeader({ signedIn = true }: { signedIn?: boolean }) {
         <div className="app-controls">
           <ThemeSelect />
           {signedIn && (
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={async () => {
-                await fetch("/api/logout", { method: "POST" });
-                router.refresh();
-              }}
-            >
-              Wyjdź
-            </button>
+            <>
+              <span className="app-user" title={email ?? undefined}>
+                {email}
+              </span>
+              <button type="button" className="button-secondary" onClick={logout} disabled={leaving}>
+                {leaving ? "Wylogowuję…" : "Wyloguj"}
+              </button>
+            </>
           )}
         </div>
       </header>

@@ -1,7 +1,5 @@
-import { cookies } from "next/headers";
 import { z } from "zod";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { deleteConversation } from "@/lib/chatStore";
 
 const requestSchema = z.strictObject({
@@ -11,9 +9,8 @@ const requestSchema = z.strictObject({
 
 /** Historia rozmów: usuwanie rozmowy (razem z wiadomościami). */
 export async function POST(req: Request) {
-  // Najpierw sesja: bez logowania nie dotykamy bazy.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 
@@ -27,10 +24,12 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return Response.json({ ok: false, message: "Nieprawidłowy numer rozmowy." }, { status: 400 });
   }
-  if (!isSupabaseConfigured()) {
+  // Klient zalogowanej osoby: RLS pozwala usunąć tylko jej własną rozmowę.
+  const db = await getUserDb();
+  if (!db) {
     return Response.json({ ok: false, message: "Zapis rozmów jest wyłączony na serwerze." }, { status: 500 });
   }
-  const deleted = await deleteConversation(parsed.data.id);
+  const deleted = await deleteConversation(db, parsed.data.id);
   return deleted
     ? Response.json({ ok: true })
     : Response.json({ ok: false, message: "Nie udało się usunąć rozmowy (może już jej nie ma)." }, { status: 404 });

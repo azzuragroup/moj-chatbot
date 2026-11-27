@@ -1,21 +1,21 @@
-import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
-import Login from "@/components/Login";
 import ProfileEditor from "@/components/ProfileEditor";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import { loginPath } from "@/lib/authRedirect";
+import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { loadProfile } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
 /** Profil użytkownika: co agent o mnie pamięta. Dane tylko po sprawdzeniu sesji. */
 export default async function ProfilePage() {
-  // Najpierw sesja: bez logowania nie czytamy niczego z bazy.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) return <Login />;
+  // Najpierw zweryfikowana sesja (serwer): bez logowania nie czytamy niczego z bazy.
+  if (!(await getCurrentUser())) redirect(loginPath("/profile"));
 
-  const persistence = isSupabaseConfigured();
-  const profile = persistence ? await loadProfile() : null;
+  // Własny profil zalogowanej osoby (RLS).
+  const db = await getUserDb();
+  const persistence = db !== null;
+  const profile = persistence ? await loadProfile(db) : null;
 
   return (
     <main className="page page-wide">

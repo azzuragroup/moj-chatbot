@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { buildPlannerPlan, otherProduct, plannerRequestSchema } from "@/lib/planner";
 import { runWeekDrafts } from "@/lib/agent";
 
@@ -12,9 +11,8 @@ export const maxDuration = 60;
  * - tydzien: szkice LinkedIn + Instagram dla jednego tygodnia (jedno wywołanie modelu).
  */
 export async function POST(req: Request) {
-  // Najpierw sesja: bez logowania nic nie pobieramy i nie wołamy modelu.
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 

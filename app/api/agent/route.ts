@@ -1,6 +1,5 @@
 import type { UIMessage } from "ai";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE, hasValidSession } from "@/lib/auth";
+import { getCurrentUser, getUserDb } from "@/lib/supabase/server";
 import { hasOnlyChatRoles, parseAnalyzeRequest } from "@/lib/input";
 import { validateChatFiles } from "@/lib/images";
 import { runAnalyze, runChat } from "@/lib/agent";
@@ -18,8 +17,8 @@ const CONFIG_MESSAGE =
   "Brak konfiguracji serwera: uzupełnij OPENROUTER_API_KEY i OPENROUTER_MODEL.";
 
 export async function POST(req: Request) {
-  const session = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!hasValidSession(session)) {
+  // Zweryfikowana sesja Supabase (getClaims) – bez niej 401, zanim dotkniemy bazy albo modelu.
+  if (!(await getCurrentUser())) {
     return new Response("Brak dostępu. Zaloguj się.", { status: 401 });
   }
 
@@ -43,7 +42,10 @@ export async function POST(req: Request) {
     if (!config) return new Response(CONFIG_MESSAGE, { status: 500 });
     // req.signal: gdy użytkownik kliknie Stop, przeglądarka zrywa połączenie,
     // a model i narzędzia przestają pracować (nie płacimy za resztę).
-    return runChat(messages, config, req.signal, parseConversationId(rest.conversationId));
+    // Rozmowa zapisuje się klientem zalogowanej osoby (jej sesja z ciasteczek) – user_id
+    // ustala baza z tej sesji, nigdy z treści zapytania ani od modelu.
+    const db = await getUserDb();
+    return runChat(db, messages, config, req.signal, parseConversationId(rest.conversationId));
   }
 
   if (mode === "analyze") {

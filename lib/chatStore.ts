@@ -1,16 +1,19 @@
 import "server-only";
-import { getSupabase } from "./supabase";
+import type { UserDb } from "./supabase/server";
 import { rowsToMessages, titleFromText, type StoredRow } from "./chatPersistence";
 
 /**
  * Zapis i odczyt rozmów w Supabase. Wołane wyłącznie z kodu serwera,
  * po sprawdzeniu sesji (trasa API albo strona serwerowa).
+ *
+ * Każda funkcja dostaje klienta zalogowanej osoby (getUserDb: klucz publishable + jej sesja),
+ * więc bazy pilnuje RLS: widać i zmienia się tylko własne rozmowy i wiadomości.
+ * user_id NIE jest tu nigdzie podawany – wypełnia go baza (domyślnie auth.uid()).
  * Każda funkcja zwraca null/false przy braku konfiguracji lub błędzie bazy –
  * czat działa wtedy dalej, tylko bez zapisu.
  */
 
-export async function createConversation(firstText: string): Promise<number | null> {
-  const db = getSupabase();
+export async function createConversation(db: UserDb | null, firstText: string): Promise<number | null> {
   if (!db) return null;
   const { data, error } = await db
     .from("conversations")
@@ -24,8 +27,7 @@ export async function createConversation(firstText: string): Promise<number | nu
   return data.id as number;
 }
 
-export async function conversationExists(id: number): Promise<boolean> {
-  const db = getSupabase();
+export async function conversationExists(db: UserDb | null, id: number): Promise<boolean> {
   if (!db) return false;
   const { data, error } = await db.from("conversations").select("id").eq("id", id).maybeSingle();
   if (error) console.error("[baza] nie udało się sprawdzić rozmowy", error.code, error.message);
@@ -33,8 +35,7 @@ export async function conversationExists(id: number): Promise<boolean> {
 }
 
 /** Zapisuje parę: pytanie użytkownika i odpowiedź agenta – jednym zapytaniem, w tej kolejności. */
-export async function saveExchange(conversationId: number, userText: string, assistantText: string) {
-  const db = getSupabase();
+export async function saveExchange(db: UserDb | null, conversationId: number, userText: string, assistantText: string) {
   if (!db) return false;
   const rows = [
     ...(userText ? [{ conversation_id: conversationId, role: "user", content: userText }] : []),
@@ -50,8 +51,7 @@ export async function saveExchange(conversationId: number, userText: string, ass
 }
 
 /** Usuwa rozmowę, która nie ma żadnej wiadomości (np. gdy model zwrócił błąd). */
-export async function deleteIfEmpty(conversationId: number) {
-  const db = getSupabase();
+export async function deleteIfEmpty(db: UserDb | null, conversationId: number) {
   if (!db) return;
   const { count } = await db
     .from("messages")
@@ -61,8 +61,7 @@ export async function deleteIfEmpty(conversationId: number) {
 }
 
 /** Ostatnia rozmowa (najnowsza) z wiadomościami – do pokazania po odświeżeniu strony. */
-export async function loadLatestConversation() {
-  const db = getSupabase();
+export async function loadLatestConversation(db: UserDb | null) {
   if (!db) return null;
   const { data: conv, error } = await db
     .from("conversations")
@@ -75,11 +74,10 @@ export async function loadLatestConversation() {
     return null;
   }
   if (!conv) return null;
-  return loadConversation(conv.id as number);
+  return loadConversation(db, conv.id as number);
 }
 
-export async function loadConversation(id: number) {
-  const db = getSupabase();
+export async function loadConversation(db: UserDb | null, id: number) {
   if (!db) return null;
   const { data, error } = await db
     .from("messages")
@@ -96,8 +94,7 @@ export async function loadConversation(id: number) {
 export type ConversationSummary = { id: number; title: string; createdAt: string; messageCount: number };
 
 /** Lista rozmów (najnowsze na górze) z liczbą wiadomości – do strony /history. */
-export async function listConversations(limit = 100): Promise<ConversationSummary[] | null> {
-  const db = getSupabase();
+export async function listConversations(db: UserDb | null, limit = 100): Promise<ConversationSummary[] | null> {
   if (!db) return null;
   const { data, error } = await db
     .from("conversations")
@@ -116,8 +113,7 @@ export async function listConversations(limit = 100): Promise<ConversationSummar
   }));
 }
 
-export async function updateConversationTitle(id: number, title: string) {
-  const db = getSupabase();
+export async function updateConversationTitle(db: UserDb | null, id: number, title: string) {
   if (!db) return false;
   const { error } = await db.from("conversations").update({ title }).eq("id", id);
   if (error) console.error("[baza] nie udało się zmienić tytułu", error.code, error.message);
@@ -128,8 +124,7 @@ export async function updateConversationTitle(id: number, title: string) {
  * Usuwa rozmowę razem z wiadomościami. Najpierw wiadomości, potem rozmowę –
  * działa także wtedy, gdy relacja w bazie nie ma kasowania kaskadowego.
  */
-export async function deleteConversation(id: number) {
-  const db = getSupabase();
+export async function deleteConversation(db: UserDb | null, id: number) {
   if (!db) return false;
   const msgs = await db.from("messages").delete().eq("conversation_id", id);
   if (msgs.error) {

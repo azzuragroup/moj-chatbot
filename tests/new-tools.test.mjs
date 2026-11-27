@@ -142,11 +142,17 @@ test("notatki: zapis, odczyt, pusta notatka i limit", () => {
 
 // --- diagnostyka ---
 test("diagnostyka: tylko tak/nie, nigdy wartości zmiennych", () => {
-  const env = { OPENROUTER_API_KEY: "sk-or-TAJNE", OPENROUTER_MODEL: "x/y", CHAT_PASSWORD: "", SESSION_SECRET: undefined };
+  const env = {
+    OPENROUTER_API_KEY: "sk-or-TAJNE", OPENROUTER_MODEL: "x/y",
+    NEXT_PUBLIC_SUPABASE_URL: "https://x.supabase.co", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "  ",
+  };
   assert.deepEqual(envStatus(env), {
-    OPENROUTER_API_KEY: "tak", OPENROUTER_MODEL: "tak", CHAT_PASSWORD: "nie", SESSION_SECRET: "nie",
+    OPENROUTER_API_KEY: "tak", OPENROUTER_MODEL: "tak",
     SUPABASE_URL: "nie", SUPABASE_SECRET_KEY: "nie",
+    NEXT_PUBLIC_SUPABASE_URL: "tak", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "nie",
   });
+  // Wspólne hasło zniknęło – diagnostyka już o nie nie pyta.
+  assert.ok(!("CHAT_PASSWORD" in envStatus(env)) && !("SESSION_SECRET" in envStatus(env)));
   const r = diagnosticsReport({ modelId: "x/y", toolNames: ["czas", "diagnostyka"], maxSteps: 5 }, env, new Date("2026-11-16T10:00:00Z"));
   assert.doesNotMatch(JSON.stringify(r), /TAJNE/);
   assert.equal(r.limitKrokow, 5);
